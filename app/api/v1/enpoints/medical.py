@@ -43,12 +43,12 @@ async def extract_medication_info(
         initial_state = {"files": files}
 
         # Start the workflow execution
-        result = medication_graph.invoke(initial_state)
+        result = await medication_graph.ainvoke(initial_state)
 
         return {
             "status": "success",
             "message": f"Successfully processed {len(files)} medication images",
-            "results": result.get("processed_medications", [])
+            "results": result
         }
 
     except Exception as e:

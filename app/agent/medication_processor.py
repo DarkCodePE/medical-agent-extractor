@@ -12,24 +12,31 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Define prompt templates for medication extraction
+
 MEDICATION_EXTRACTION_PROMPT = """
-You are an AI assistant specializing in extracting structured information from medication packaging and prescriptions.
+You are an AI assistant specializing in extracting structured information from medication inventory tables and medication packaging.
 
 **Input Data:**
 {extracted_text}
 
-Analyze the input text from the medication packaging or prescription and extract the following details:
+Analyze the input text from the medication inventory or packaging and extract the following details:
 
-1. **Medication Name**: The primary name/brand of the medication
-2. **Active Ingredients**: List all active ingredients with their amounts
-3. **Dosage**: The dosage information (strength, frequency, etc.)
-4. **Manufacturer**: The company that produces the medication
+1. **Medication Code**: The identification code of the medication (if available)
+2. **Lot Number**: The lot or batch number of the medication (if available)
+3. **Medication Name**: The primary name/brand of the medication
+4. **Description**: The complete description of the medication, which may include:
+   - Active ingredient name
+   - Dosage form (solution, tablet, gel, etc.)
+   - Strength/concentration
+   - Package size or volume
+   - Manufacturer information
 5. **Expiration Date**: When the medication expires (if available)
-6. **Batch Number**: Lot or batch identification (if available)
-7. **Instructions**: Usage directions and important warnings
-8. **Barcode**: Any barcode number that appears in the text
+6. **Quantity**: Available quantity or stock (if available)
+7. **Price**: The price of the medication (if available)
 
-If any information is not present in the text, indicate it as null.
+Parse all information exactly as shown in the text. If any information is not present in the text, indicate it as null.
+
+When active ingredients are mentioned, extract both the ingredient name and its concentration.
 """
 
 
@@ -66,6 +73,7 @@ class MedicationProcessor:
             Updated state with processed medication data
         """
         extracted_texts = state.get("extracted_texts", [])
+        logger.info(f"Extracted texts: {extracted_texts}")
         if not extracted_texts:
             return {"error": "No extracted texts available for processing"}
 
