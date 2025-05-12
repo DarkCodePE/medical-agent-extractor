@@ -40,10 +40,6 @@ class MedicationExtractionGraph(GraphBuilder):
         # Start -> extract_medication_info
         self.graph.add_edge(START, "extract_medication_info")
         # extract_medication_info -> process_medication_data
-        self.graph.add_edge("extract_medication_info", "process_medication_data")
+        #self.graph.add_edge("extract_medication_info", "process_medication_data")
         # process_medication_data -> END
-        self.graph.add_edge("process_medication_data", END)
-
-    def conditional_edges(self) -> None:
-        """Add any conditional routing logic (not needed for this simple flow)"""
-        pass
+        self.graph.add_edge("extract_medication_info", END)

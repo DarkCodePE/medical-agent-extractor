@@ -1,18 +1,30 @@
 import logging
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from langchain_core.messages import SystemMessage, HumanMessage
+from pydantic import BaseModel, Field
 
-from app.agent.medication_extraction_state import MedicationExtractionState, MedicationStructuredContent
+from app.agent.medication_extraction_state import MedicationExtractionState, MedicationStructuredContent, \
+    MedicationDetails
 from app.config.config import get_settings
 from app.providers.llm_manager import LLMConfig, LLMManager, LLMType
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Define prompt templates for medication extraction
+# Define Pydantic model for structured output
+class MedicationDetailsModel(BaseModel):
+    """Medication details extracted from the image"""
+    bar_code: Optional[str] = Field(None, description="The identification code of the medication")
+    lot_number: Optional[str] = Field(None, description="The lot or batch number of the medication")
+    medication_name: str = Field(..., description="The primary name/brand of the medication")
+    description: str = Field(..., description="Complete description including active ingredients, dosage form, etc.")
+    expiration_date: Optional[str] = Field(None, description="When the medication expires")
+    quantity: Optional[str] = Field(None, description="Available quantity or stock")
+    price: Optional[str] = Field(None, description="The price of the medication")
 
+# Define prompt templates for medication extraction
 MEDICATION_EXTRACTION_PROMPT = """
 You are an AI assistant specializing in extracting structured information from medication inventory tables and medication packaging.
 
@@ -60,9 +72,9 @@ class MedicationProcessor:
         )
         self.llm_manager = LLMManager(llm_config)
         # Get the primary LLM for processing
-        self.primary_llm = self.llm_manager.get_llm(LLMType.GPT_4O_MINI)
+        self.primary_llm = self.llm_manager.get_llm(LLMType.GEMINI)
 
-    async def process_medication_data(self, state: MedicationExtractionState) -> Dict[str, Any]:
+    async def process_medication_data(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process extracted text to structure medication information.
 
@@ -74,33 +86,16 @@ class MedicationProcessor:
         """
         extracted_texts = state.get("extracted_texts", [])
         logger.info(f"Extracted texts: {extracted_texts}")
-        if not extracted_texts:
-            return {"error": "No extracted texts available for processing"}
 
-        processed_results = []
-
-        for idx, text in enumerate(extracted_texts):
-            try:
-                # Structure the medication data with LLM
-                structured_llm = self.primary_llm.with_structured_output(MedicationStructuredContent)
-                system_instructions = MEDICATION_EXTRACTION_PROMPT.format(
-                    extracted_text=text,
-                )
-
-                result = structured_llm.invoke([
-                    SystemMessage(content=system_instructions),
-                    HumanMessage(
-                        content="Extract the key medication information from this OCR text and return it in a structured format.")
-                ])
-
-                processed_results.append(result)
-                logger.info(f"Successfully processed medication data for image {idx + 1}")
-
-            except Exception as e:
-                logger.error(f"Error processing medication data for image {idx + 1}: {str(e)}")
-                processed_results.append({
-                    "error": str(e),
-                    "raw_text": text
-                })
-
-        return {"processed_medications": processed_results}
+        structured_llm = self.primary_llm.with_structured_output(MedicationDetailsModel)
+        logger.info("Using structured_llm")
+        system_instructions = MEDICATION_EXTRACTION_PROMPT.format(
+            extracted_text=extracted_texts,
+        )
+        result = structured_llm.invoke([
+            SystemMessage(content=system_instructions),
+            HumanMessage(
+                content="Extract the key medication information from this OCR text and return it in a structured format.")
+        ])
+        logger.info(f"Result structured_llm: {result}")
+        return {"processed_medications": result}

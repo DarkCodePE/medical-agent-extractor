@@ -7,6 +7,7 @@ import logging
 # Import graph builders
 # from app.workflow.document_extraction_graph import DocumentExtractionGraph
 from app.workflow.medication_extraction_graph import MedicationExtractionGraph
+from app.workflow.ocr_gateway_graph import OCRGatewayGraph
 
 logger = logging.getLogger(__name__)
 
@@ -39,5 +40,18 @@ class GraphDirector:
         """
         logger.info("Building medication extraction workflow")
         builder = MedicationExtractionGraph()
+        builder.build()
+        return builder.get_graph().compile()
+
+    @staticmethod
+    def ocr_extraction() -> StateGraph:
+        """
+        Build and return the OCR gateway extraction workflow graph
+
+        Returns:
+            Compiled OCR extraction workflow
+        """
+        logger.info("Building OCR gateway extraction workflow")
+        builder = OCRGatewayGraph()
         builder.build()
         return builder.get_graph().compile()

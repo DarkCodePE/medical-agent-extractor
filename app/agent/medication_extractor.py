@@ -61,8 +61,8 @@ class MedicationExtractorAgent:
             all_extracted_texts.append(extracted_text)
 
             # Structure the extracted content
-            structured_content = await self._structure_medication_content(extracted_text)
-            all_structured_contents.append(structured_content)
+            #structured_content = await self._structure_medication_content(extracted_text)
+            #all_structured_contents.append(structured_content)
 
             file_names.append(file.filename)
 
@@ -71,7 +71,7 @@ class MedicationExtractorAgent:
         # Return updated state
         return {
             "extracted_texts": all_extracted_texts,
-            "structured_contents": all_structured_contents,
+            #"structured_contents": all_structured_contents,
             "file_names": file_names,
         }
 

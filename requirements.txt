@@ -41,3 +41,7 @@ langchain_google_vertexai
 langgraph-cli[inmem]
 opencv-python
 mistralai
+google-generativeai
+langchain_google_genai
+pyodbc
+pymssql

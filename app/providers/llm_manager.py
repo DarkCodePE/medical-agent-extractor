@@ -23,6 +23,7 @@ from langchain_google_vertexai import ChatVertexAI
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from pydantic import BaseModel, Field
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,7 +36,7 @@ class LLMType(str, Enum):
     GPT_4O = "gpt-4o"
     AZURE_OPENAI = "azure-gpt-4o"
     ANTHROPIC_CLAUDE = "claude-3-5-sonnet-20240620"
-    GEMINI = "gemini-2.0-flash-exp"
+    GEMINI = "gemini-2.0-flash-lite"
 
     @classmethod
     def get_default(cls) -> "LLMType":
@@ -139,7 +140,7 @@ class LLMManager:
             raise
 
     @lru_cache(maxsize=1)
-    def get_google_llm(self) -> ChatVertexAI:
+    def get_google_llm(self) -> ChatGoogleGenerativeAI:
         """
         Get a Google Vertex AI instance with caching
 
@@ -150,11 +151,10 @@ class LLMManager:
             Exception: For initialization errors
         """
         try:
-            return ChatVertexAI(
-                model_name="gemini-2.0-flash-exp",
+            return ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash-lite",
                 temperature=self.config.temperature,
-                max_output_tokens=self.config.max_tokens,
-                streaming=self.config.streaming,
+                max_tokens=self.config.max_tokens,
                 convert_system_message_to_human=True,
                 callback_manager=self._callback_manager
             )
@@ -162,7 +162,7 @@ class LLMManager:
             logger.error(f"Failed to initialize Google Vertex AI LLM: {str(e)}")
             raise
 
-    def get_llm(self, llm_type: LLMType) -> Union[ChatOpenAI, AzureChatOpenAI, ChatAnthropic, ChatVertexAI]:
+    def get_llm(self, llm_type: LLMType) -> Union[ChatOpenAI, AzureChatOpenAI, ChatAnthropic, ChatGoogleGenerativeAI]:
         """
         Get an LLM instance based on the specified type
 

@@ -1,8 +1,9 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query
 import logging
 
 from app.workflow.medication_graph import medication_graph
+from app.workflow.ocr_graph import ocr_graph
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +17,18 @@ router = APIRouter(
 async def extract_medication_info(
         background_tasks: BackgroundTasks,
         files: List[UploadFile] = File(...),
+        provider: Optional[str] = Query(None, description="OCR provider to use (mistral or gemini)")
 ):
     """
-    Extract medication information from uploaded prescription or medication package images
+    Extract text from uploaded images using OCR
 
     Args:
         files: List of image files to process
         background_tasks: BackgroundTasks for async processing
+        provider: OCR provider to use (mistral or gemini)
 
     Returns:
-        Job ID for tracking the extraction process
+        Extracted text results
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -41,10 +44,12 @@ async def extract_medication_info(
     try:
         # Initialize the state with the files
         initial_state = {"files": files}
+        if provider:
+            initial_state["ocr_provider"] = provider
 
         # Start the workflow execution
-        result = await medication_graph.ainvoke(initial_state)
-
+        result = await ocr_graph.ainvoke(initial_state)
+        logger.info(f"Result: {result}")
         return {
             "status": "success",
             "message": f"Successfully processed {len(files)} medication images",
