@@ -7,7 +7,7 @@ import logging
 
 from app.agent.medication_processor import MedicationProcessor
 from app.agent.ocr_gateway_extractor import OCRGatewayExtractor
-from app.tools.check_gtin_in_database import check_gtin_in_database
+from app.tools.check_gtin_in_database import check_gtin_in_database, check_gtin_in_database_v3
 
 from app.workflow.builder.base import GraphBuilder
 from app.agent.medication_extraction_state import MedicationExtractionState
@@ -49,7 +49,7 @@ class OCRGatewayGraph(GraphBuilder):
         # Nodo de extracción de texto OCR
         self.graph.add_node("extract_text", self.ocr_gateway.extract_text)
         # Nodo de verificación GTIN
-        self.graph.add_node("check_gtin", check_gtin_in_database)
+        self.graph.add_node("check_gtin", check_gtin_in_database_v3)
         # Nodo de procesamiento de medicamentos
         self.graph.add_node("process_medication_data", self.processor.process_medication_data)
 
