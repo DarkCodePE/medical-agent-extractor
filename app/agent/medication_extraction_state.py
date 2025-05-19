@@ -7,12 +7,19 @@ from typing_extensions import NotRequired
 class MedicationDetails(TypedDict):
     """Medication details extracted from the inventory image"""
     bar_code: str
-    lot_number: str
     medication_name: str
     description: str
-    expiration_date:str
-    quantity: str
-    price:str
+    common_denomination:str
+    concentration: str
+    form: str
+    form_simple: str
+    brand_name: str
+    country: str
+    presentation: str
+    fractions: str
+    product_type: str
+    lot_number: str
+    expiration_date: str
 
 class MedicationStructuredContent(TypedDict):
     """Structured content from a medication inventory image"""
@@ -23,16 +30,17 @@ class DatabaseInfo(TypedDict):
     """Database information from GTIN lookup"""
     gtin_code: str
     medication_name: str
-    active_ingredient: str
+    common_denomination:str
     concentration: str
     form: str
     form_simple: str
-    brand: str
+    brand_name: str
     country: str
     presentation: str
+    fractions: str
     product_type: str
-    lot_number: NotRequired[str]
-    expiration_date: NotRequired[str]
+    lot_number: str
+    expiration_date: str
 
 class MedicationExtractionState(TypedDict):
     """State for medication extraction workflow"""

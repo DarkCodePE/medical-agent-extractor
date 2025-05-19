@@ -364,15 +364,71 @@ async def check_gtin_in_database_v3(state: Dict[str, Any]) -> Dict[str, Any]:
     logger.info(f"GTIN database has data: {has_data}")
 
     # Extract barcode - directly access bar_code attribute
-    barcode = processed_medication.bar_code
-    logger.info(f"GTIN database has data: {barcode}")
+    # barcode = processed_medication.bar_code
+    # logger.info(f"GTIN database has data: {barcode}")
     # Clean barcode and query database
-    clean_code = barcode.strip().replace('-', '').replace(' ', '')
-    product = gtin_service.query_gtin(clean_code)
+    # clean_code = barcode.strip().replace('-', '').replace(' ', '')
+    # product = gtin_service.query_gtin(clean_code)
+    # Process info stata
+    # processed_medication = state["processed_medications"]
+    # logger.info(f"processed_medications: {processed_medication}")
+    product_info_from_db = None
+    gtin_found_for_this_item = False
+
+    if processed_medication.bar_code:
+        clean_code = processed_medication.bar_code.strip().replace('-', '').replace(' ', '')
+        if clean_code.isdigit() and len(clean_code) in [8, 12, 13, 14]:
+            logger.info(f"Querying database for clean GTIN: {clean_code}")
+            db_result = gtin_service.query_gtin(clean_code)  # Renombrado para claridad
+
+            if db_result:
+                product_info_from_db = db_result  # Guardamos la info cruda para el estado
+                gtin_found_for_this_item = True
+                logger.info(f"GTIN {clean_code} found in DB: {db_result.get('Name')}")
+
+                # --- ENRICHMENT LOGIC ---
+                if db_result.get("Name"):
+                    processed_medication.medication_name = db_result["Name"]
+                if db_result.get("CommonDenomination"):
+                    processed_medication.common_denomination = db_result["CommonDenomination"]
+                if db_result.get("Concentration"):
+                    processed_medication.concentration = db_result["Concentration"]
+                if db_result.get("Form"):
+                    processed_medication.form = db_result["Form"]
+                if db_result.get("FormSimple"):
+                    processed_medication.form_simple = db_result["FormSimple"]
+                if db_result.get("BrandName"):
+                    processed_medication.brand_name = db_result["BrandName"]
+                if db_result.get("Country"):
+                    processed_medication.country = db_result["Country"]
+                if db_result.get("Presentation"):
+                    processed_medication.presentation = db_result["Presentation"]
+                if db_result.get("Fractions") is not None:  # Puede ser numérico o string
+                    processed_medication.fractions = str(db_result["Fractions"])
+
+                # Campos que vienen principalmente de la BD
+                if db_result.get("ProductType"):
+                    processed_medication.product_type = db_result["ProductType"]
+                # if db_result.get("CodeRsList"):
+                #     processed_medication.code_rs_list = db_result["CodeRsList"]
+                # if db_result.get("State"):  # 'State' de la tabla ItemsGtin
+                #     processed_medication.product_status_in_db = db_result["State"]
+
+                # Los campos lot_number y expiration_date se mantienen del OCR
+                # a menos que tengas una lógica específica para actualizarlos desde la BD (raro).
+
+                logger.info(f"Enriched processed_medications: {processed_medication.model_dump_json(indent=2)}")
+            else:
+                logger.info(f"GTIN {clean_code} NOT found in DB.")
+        else:
+            logger.warning(f"Barcode '{processed_medication.bar_code}' is not valid for DB query.")
+    else:
+        logger.warning("No barcode present in processed_medications to query.")
 
     return {
-        "database_info": product,
-        "gtin_found": has_data
+        "processed_medications": processed_medication,
+        "database_info": product_info_from_db,
+        "gtin_found": gtin_found_for_this_item
     }
 
 async def check_gtin_in_database(state: Dict[str, Any]) -> Dict[str, Any]:

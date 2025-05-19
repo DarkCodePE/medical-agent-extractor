@@ -1,5 +1,5 @@
 import logging
-import json
+
 from typing import Dict, Any, List, Optional
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -22,7 +22,8 @@ class MedicationDetailsModel(BaseModel):
     expiration_date: Optional[str] = Field(None, description="When the medication expires")
 
     # Database-aligned fields
-    name: str = Field(..., description="The brand name of the medication (e.g., LAGRICEL OFTENO)")
+    product_type: Optional[str] = Field(None, description="The product type of the medication (e.g., ALIMENTO,COSMETICO,DISPOSITIVO MEDICO, EQUIPO MEDICO, EQUIPO PROTECCION PERSONAL,INSUMO MEDICO, OTROS NO FARMACEUTICOS, PRODUCTO FARMACEUTICO, PRODUCTO SANITARIO/HIGIENE PERSONAL)")
+    medication_name: str = Field(..., description="The brand name of the medication (e.g., LAGRICEL OFTENO)")
     common_denomination: Optional[str] = Field(None, description="The active ingredient (e.g., HIALURONATO SODICO)")
     concentration: Optional[str] = Field(None, description="The concentration of active ingredient (e.g., 4 mg/mL)")
     form: Optional[str] = Field(None, description="The pharmaceutical form (e.g., SOLUCION OFTALMICA)")
@@ -31,51 +32,9 @@ class MedicationDetailsModel(BaseModel):
     country: Optional[str] = Field(None, description="Country of origin")
     presentation: Optional[str] = Field(None, description="How the product is packaged (e.g., CAJA UNIDOSIS)")
     fractions: Optional[str] = Field(None, description="The number of primary, indivisible units that make up the retail product being described.")
-    # Additional fields
-    quantity: Optional[str] = Field(None, description="Available quantity or stock")
-    price: Optional[str] = Field(None, description="The price of the medication")
+
 
 # Define prompt templates for medication extraction
-MEDICATION_EXTRACTION_PROMPT = """
-You are an AI assistant specializing in extracting structured information from medication inventory tables and medication packaging.
-
-**Input Data:**
-{extracted_text}
-
-Analyze the input text and extract the following details, paying special attention to format the data in a way that matches database records:
-
-1. **Bar Code/GTIN**: The identification code of the medication (e.g., "7 36085 28000 5"). Clean to remove spaces when possible.
-
-2. **Lot Number**: The production batch number (look for "Lote:", "Lot:", "Batch:", etc.)
-
-3. **Expiration Date**: When the medication expires (look for "Cad:", "Exp:", "Expiry:", etc.)
-
-4. **Name**: The complete brand name as it appears on the package (e.g., "LAGRICEL OFTENO", "PARACETAMOL FORTE")
-
-5. **Common Denomination**: The active ingredient/generic name (e.g., "HIALURONATO SODICO", "PARACETAMOL")
-
-6. **Concentration**: The dosage strength with units (e.g., "4 mg/mL", "500 mg")
-
-7. **Form**: The pharmaceutical form in detail (e.g., "SOLUCION OFTALMICA", "TABLETA RECUBIERTA")
-
-8. **Form Simple**: The simplified form type (e.g., "COLIRIO", "TABLETA", "CAPSULA", "JARABE")
-
-9. **Brand Name**: The manufacturer or brand company name (e.g., "LABOFTA", "BAYER")
-
-10. **Country**: Country of origin or manufacture if mentioned
-
-11. **Presentation**: How the product is packaged (e.g., "CAJA UNIDOSIS", "FRASCO x 120 mL")
-
-12. **Quantity**: Available quantity or inventory count if present
-
-13. **Price**: The price of the medication if present
-
-For each field, extract exactly as shown in the text or make a best guess based on context. If information isn't present, leave the field empty.
-
-For active ingredients, clearly separate the ingredient name (common_denomination) from its concentration.
-"""
-
-
 MEDICATION_EXTRACTION_PROMPT_V2 = """
 Extract structured information from medication inventory tables and medication packaging.
 
@@ -90,7 +49,7 @@ Carefully analyze the input text and extract the following details, ensuring the
 
 - **Expiration Date**: Use terms like "Cad:", "Exp:", "Expiry:" to find when the medication expires.
 
-- **Name**: The complete brand name as presented on the packaging.
+- **Medication Name**: The complete brand name as presented on the packaging.
 
 - **Common Denomination**: Extract the active ingredient or generic name separately.
 
@@ -108,7 +67,7 @@ Carefully analyze the input text and extract the following details, ensuring the
 
  **`fractions`**: The number of primary, indivisible units that make up the retail product being described.
 
-- **Price**: List the price if it is mentioned.
+- **Product type**: The product type of the medication (e.g., ALIMENTO,COSMETICO,DISPOSITIVO MEDICO, EQUIPO MEDICO, EQUIPO PROTECCION PERSONAL,INSUMO MEDICO, OTROS NO FARMACEUTICOS, PRODUCTO FARMACEUTICO, PRODUCTO SANITARIO/HIGIENE PERSONAL)
 
 If specific information isn’t present, leave the field empty. Distinguish between the active ingredient and its concentration
 """
