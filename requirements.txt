@@ -30,7 +30,7 @@ langchain-community
 pydantic[email]
 python-multipart
 passlib[bcrypt]
-langgraph~=0.2.62
+langgraph
 pypdf
 langchain_anthropic
 PyMuPDF
@@ -40,8 +40,8 @@ typing_extensions~=4.12.2
 langchain_google_vertexai
 langgraph-cli[inmem]
 opencv-python
-mistralai
+mistralai~=1.7.0
 google-generativeai
-langchain_google_genai
+langchain-google-genai
 pyodbc
-pymssql
+pymssql~=2.3.4

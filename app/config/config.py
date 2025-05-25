@@ -34,36 +34,47 @@ class LangGraphConfig:
 
 
 class Settings(BaseSettings):
-    tavily_api_key: str
-    openai_api_key: str
+    # API Keys - Optional with None defaults
+    tavily_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
-    mistral_api_key: str
+    mistral_api_key: Optional[str] = None
 
-    # Database Configuration
-    db_name: str
-    db_user: str
-    db_password: str
+    # Database Configuration - PostgreSQL (consistent with database.py)
+    db_host: str = "localhost"
+    db_port: str = "5432"
+    db_name: Optional[str] = None
+    db_user: Optional[str] = None
+    db_password: Optional[str] = None
     db_pool_size: int = 5
     db_max_overflow: int = 10
     db_pool_timeout: int = 30
 
+    # SQL Server Database Configuration (for GTIN service)
+    db_server: Optional[str] = None  # SQL Server host
+    db_type: Optional[str] = "sqlserver"
+    db_connection_string: Optional[str] = None
+
     # Environment
     environment: str = "development"
 
-    # REDIS_HOST=redis
+    # Redis Configuration
     redis_host: str = "redis"
     redis_port: int = 6379
-    redis_password: str = "123456"
+    redis_password: Optional[str] = None
 
-    # LangSmith
-    langsmith_tracing: bool = True
-    langsmith_api_key: str
-    langsmith_endpoint: str
-    langsmith_project: str
+    # LangSmith Configuration
+    langsmith_tracing: bool = False
+    langsmith_api_key: Optional[str] = None
+    langsmith_endpoint: Optional[str] = None
+    langsmith_project: Optional[str] = None
 
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
+        # Allow extra fields for flexibility
+        extra = "allow"
 
 
 @lru_cache()

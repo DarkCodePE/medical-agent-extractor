@@ -17,19 +17,6 @@ class GraphDirector:
     Director class that orchestrates graph building and provides access to different workflows
     """
 
-    # @staticmethod
-    # def document_extraction() -> StateGraph:
-    #     """
-    #     Build and return the document extraction workflow graph
-    #
-    #     Returns:
-    #         Compiled document extraction workflow
-    #     """
-    #     logger.info("Building document extraction workflow")
-    #     builder = DocumentExtractionGraph()
-    #     builder.build()
-    #     return builder.get_graph().compile()
-
     @staticmethod
     def medication_extraction() -> StateGraph:
         """
@@ -40,8 +27,7 @@ class GraphDirector:
         """
         logger.info("Building medication extraction workflow")
         builder = MedicationExtractionGraph()
-        builder.build()
-        return builder.get_graph().compile()
+        return builder.build()
 
     @staticmethod
     def ocr_extraction() -> StateGraph:
@@ -54,4 +40,4 @@ class GraphDirector:
         logger.info("Building OCR gateway extraction workflow")
         builder = OCRGatewayGraph()
         builder.build()
-        return builder.get_graph().compile()
+        return builder.get_graph()

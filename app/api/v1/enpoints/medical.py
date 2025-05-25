@@ -48,7 +48,8 @@ async def extract_medication_info(
             initial_state["ocr_provider"] = provider
 
         # Start the workflow execution
-        result = await ocr_graph.ainvoke(initial_state)
+        graph = ocr_graph.compile()
+        result = await graph.ainvoke(initial_state)
         logger.info(f"Result: {result}")
         return {
             "status": "success",

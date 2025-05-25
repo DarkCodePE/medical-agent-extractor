@@ -73,49 +73,9 @@ class OCRGatewayExtractor:
         logger.info("Starting gateway OCR text extraction process")
         files = state.get("files", [])
 
-        # Get provider from state or use default (first available)
-        provider = state.get("ocr_provider", self.available_providers[0])
-        if isinstance(provider, str):
-            try:
-                provider = OCRProvider(provider.lower())
-            except ValueError:
-                logger.warning(f"Invalid provider: {provider}. Using default: {self.available_providers[0]}")
-                provider = self.available_providers[0]
-
-        if provider not in self.available_providers:
-            logger.warning(f"Requested provider {provider} not available. Using {self.available_providers[0]}")
-            provider = self.available_providers[0]
-
-        logger.info(f"Using OCR provider: {provider}")
-
-        if not files:
-            logger.warning("No files provided for OCR extraction")
-            return {"error": "No files provided"}
-
-        all_extracted_texts = []
-        file_names = []
-        provider_used = []
-
-        # Process each image file
-        for file in files:
-            # Extract text from image using selected provider
-            if provider == OCRProvider.MISTRAL:
-                extracted_text = await self._process_with_mistral(file)
-            else:  # GEMINI
-                extracted_text = await self._process_with_gemini(file)
-
-            all_extracted_texts.append(extracted_text)
-            file_names.append(file.filename)
-            provider_used.append(provider)
-            logger.info(f"Processed image: {file.filename} with {provider}")
-
-        logger.info(f"Successfully extracted text from {len(files)} images using {provider}")
-
         # Return updated state
         return {
-            "extracted_texts": all_extracted_texts,
-            "file_names": file_names,
-            "ocr_provider_used": provider_used
+            "files": files,
         }
 
     async def _process_with_mistral(self, file: UploadFile) -> str:

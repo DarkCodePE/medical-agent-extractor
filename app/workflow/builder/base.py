@@ -39,7 +39,7 @@ class GraphBuilder(ABC):
         """Add error handling to the graph (optional)"""
         pass
 
-    def build(self) -> None:
+    def build(self) -> StateGraph:
         """
         Build the complete graph following the template method pattern
         """
@@ -50,6 +50,7 @@ class GraphBuilder(ABC):
         self.conditional_edges()
         self.error_handling()
         logger.info("Graph built successfully")
+        return self.get_graph()
 
     def get_graph(self) -> StateGraph:
         """

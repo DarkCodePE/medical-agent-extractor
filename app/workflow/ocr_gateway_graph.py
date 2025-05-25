@@ -5,12 +5,15 @@ from langgraph.graph import StateGraph
 from langgraph.constants import START, END
 import logging
 
+from langgraph.types import Send
+
 from app.agent.medication_processor import MedicationProcessor
 from app.agent.ocr_gateway_extractor import OCRGatewayExtractor
 from app.tools.check_gtin_in_database import check_gtin_in_database, check_gtin_in_database_v3
 
 from app.workflow.builder.base import GraphBuilder
 from app.agent.medication_extraction_state import MedicationExtractionState
+from app.workflow.medication_extraction_graph import MedicationExtractionGraph
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,10 +42,14 @@ class OCRGatewayGraph(GraphBuilder):
         super().__init__()
         self.ocr_gateway = OCRGatewayExtractor()
         self.processor = MedicationProcessor()
+        self.extract_page = None
 
     def init_graph(self) -> None:
         """Inicializa el grafo de estado con el tipo de estado de extracción de medicamentos"""
         self.graph = StateGraph(MedicationExtractionState)
+        from .medication_extraction_graph import MedicationExtractionGraph
+        extract_page = MedicationExtractionGraph()
+        self.extract_page = extract_page.build().compile()
 
     def add_nodes(self) -> None:
         """Agrega todos los nodos requeridos al grafo"""
@@ -50,6 +57,7 @@ class OCRGatewayGraph(GraphBuilder):
         self.graph.add_node("extract_text", self.ocr_gateway.extract_text)
         # Nodo de verificación GTIN
         self.graph.add_node("check_gtin", check_gtin_in_database_v3)
+        self.graph.add_node("validate_page", self.extract_page)
         # Nodo de procesamiento de medicamentos
         self.graph.add_node("process_medication_data", self.processor.process_medication_data)
 
@@ -57,7 +65,11 @@ class OCRGatewayGraph(GraphBuilder):
         """Define todos los bordes en el grafo: primero procesamiento, luego verificación GTIN"""
         # Flujo: START -> extract_text -> process_medication_data -> check_gtin -> END
         self.graph.add_edge(START, "extract_text")
-        self.graph.add_edge("extract_text", "process_medication_data")
+        self.graph.add_conditional_edges("extract_text",
+                                         self.extract_pages_content,
+                                         ["validate_page"]
+                                         )
+        self.graph.add_edge("validate_page", "process_medication_data")
         self.graph.add_edge("process_medication_data", "check_gtin")
         self.graph.add_edge("check_gtin", END)
 
@@ -70,3 +82,11 @@ class OCRGatewayGraph(GraphBuilder):
         # Aquí se podría implementar manejo de errores específicos
         # Por ejemplo, redirigir a nodos de recuperación en caso de errores
         pass
+
+    def extract_pages_content(self, state: MedicationExtractionState) -> list[Send]:
+        """Creates Send objects for each PageContent in OverallState['page_contents'] for parallel validation."""
+
+        return [
+            Send("validate_page", {"file": file})
+            for file in state["files"]
+        ]
