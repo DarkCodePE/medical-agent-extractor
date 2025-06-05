@@ -38,10 +38,11 @@ pillow~=11.1.0
 numpy~=1.26.3
 typing_extensions~=4.12.2
 langchain_google_vertexai
-langgraph-cli[inmem]
+langgraph-cli[inmem]~=0.1.67
 opencv-python
 mistralai~=1.7.0
 google-generativeai
 langchain-google-genai
 pyodbc
 pymssql~=2.3.4
+qdrant-client

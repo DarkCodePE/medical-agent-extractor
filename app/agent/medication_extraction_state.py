@@ -62,3 +62,9 @@ class MedicationExtractionState(TypedDict):
     ocr_provider: str
     gtin_found: NotRequired[bool]
     database_info: NotRequired[DatabaseInfo]
+    semantic_search_completed: NotRequired[bool]
+    semantic_results: NotRequired[List[Dict[str, Any]]]
+    semantic_match_found: NotRequired[bool]
+    semantic_best_match: NotRequired[Dict[str, Any]]
+    semantic_search_query: NotRequired[str]
+    enrichment_applied: NotRequired[bool]

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.enpoints import medical
+from app.api.v1.enpoints import medical, vectorization
 import logging
 from app.config.database import init_db
 
@@ -23,7 +23,10 @@ app.add_middleware(
 app.include_router(
     medical.router
 )
-
+# 🆕 Agregar el controlador de vectorización
+app.include_router(
+    vectorization.router
+)
 # Inicializa la base de datos
 #init_db()
 

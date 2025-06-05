@@ -39,5 +39,4 @@ class GraphDirector:
         """
         logger.info("Building OCR gateway extraction workflow")
         builder = OCRGatewayGraph()
-        builder.build()
-        return builder.get_graph()
+        return builder.build()

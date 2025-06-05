@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     langsmith_endpoint: Optional[str] = None
     langsmith_project: Optional[str] = None
 
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = "qdrant"
+    qdrant_collection_name: str = "medications_gtin_vectors"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
