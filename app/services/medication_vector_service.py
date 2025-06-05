@@ -192,7 +192,7 @@ class MedicationVectorService:
             ORDER BY Id
             """
 
-            logger.info(f"Ejecutando consulta SQL...")
+            logger.info(f"Ejecutando consulta  SQL...")
             all_medications = self.db_connection.execute_query(query)
             total_medications = len(all_medications)
 
