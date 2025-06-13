@@ -312,30 +312,48 @@ class MedicationVectorService:
             logger.error(f"❌ Error insertando lote en Qdrant: {str(e)}")
             raise
 
-    async def search_medications_semantic(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    async def search_medications_semantic(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Busca medicamentos usando búsqueda semántica.
+        Busca medicamentos usando búsqueda semántica con filtros opcionales de metadata.
 
         Args:
-            query: Texto de búsqueda (nombre, ingrediente, etc.)
+            query: Texto de búsqueda (nombre, ingrediente, concentración, etc.)
             limit: Número máximo de resultados
+            filters: Filtros opcionales de metadata para afinar la búsqueda
 
         Returns:
             Lista de medicamentos encontrados con scores de similitud
         """
         try:
             logger.info(f"🔍 Búsqueda semántica de medicamentos: '{query}'")
+            if filters:
+                logger.info(f"🎯 Aplicando filtros: {filters}")
 
             # Crear embedding de la consulta
             query_vector = await self.embeddings.aembed_query(query)
 
+            # Configurar búsqueda con filtros opcionales
+            search_params = {
+                "collection_name": self.collection_name,
+                "query_vector": query_vector,
+                "limit": limit,
+                "score_threshold": 0.5  # Filtrar resultados con baja similitud
+            }
+
+            # Agregar filtros de metadata si están disponibles
+            if filters:
+                from qdrant_client.http import models
+                search_params["query_filter"] = models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key=key,
+                            match=models.MatchValue(value=value)
+                        ) for key, value in filters.items() if value is not None
+                    ]
+                )
+
             # Buscar en Qdrant
-            search_results = self.qdrant_client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=limit,
-                score_threshold=0.5  # Filtrar resultados con baja similitud
-            )
+            search_results = self.qdrant_client.search(**search_params)
 
             # Formatear resultados
             medications = []
@@ -359,7 +377,7 @@ class MedicationVectorService:
                     "fractions": payload.get("fractions"),
                     "state": payload.get("state"),
                     "similarity_score": result.score,
-                    "search_method": "semantic",
+                    "search_method": "semantic_filtered" if filters else "semantic",
                     "vectorized_at": payload.get("vectorized_at")
                 })
 

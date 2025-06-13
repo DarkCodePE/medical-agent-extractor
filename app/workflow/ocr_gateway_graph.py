@@ -8,7 +8,7 @@ import logging
 from langgraph.types import Send
 
 from app.agent.medication_processor import MedicationProcessor
-from app.agent.medication_search_workflow import search_medications_semantic
+from app.agent.medication_search_workflow_optimized import search_medications_semantic_optimized
 from app.agent.ocr_gateway_extractor import OCRGatewayExtractor
 from app.tools.check_gtin_in_database import check_gtin_in_database_v3, GtinService
 
@@ -266,7 +266,7 @@ class OCRGatewayGraph(GraphBuilder):
         self.graph.add_node("check_gtin_validity", check_has_valid_gtin)
         # Nodos de búsqueda condicional
         self.graph.add_node("exact_gtin_search", check_gtin_in_database_v3)
-        self.graph.add_node("semantic_search", search_medications_semantic)
+        self.graph.add_node("semantic_search", search_medications_semantic_optimized)
         # Nodo de finalización
         self.graph.add_node("finalize_data_enrichment", finalize_data_enrichment)
 

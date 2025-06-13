@@ -75,3 +75,8 @@ class MedicationExtractionState(TypedDict):
     completeness_percentage: NotRequired[float]
     missing_critical_fields: NotRequired[List[str]]
     workflow_completed: NotRequired[bool]
+    # Campos agregados para búsqueda semántica optimizada
+    search_strategy: NotRequired[str]
+    search_confidence: NotRequired[float]
+    confidence_threshold_used: NotRequired[float]
+    search_stats: NotRequired[Dict[str, Any]]
