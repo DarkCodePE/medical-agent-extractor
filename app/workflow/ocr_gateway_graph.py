@@ -91,6 +91,151 @@ def check_has_valid_gtin(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]:
+    """
+    Nodo de finalización que combina y completa los datos del medicamento
+    usando información de la base de datos GTIN y/o búsqueda semántica.
+    
+    Lógica:
+    - Si se encontraron datos en BD GTIN: usar preferentemente esos datos
+    - Si NO se encontraron datos en BD GTIN: usar datos de búsqueda semántica para completar campos faltantes
+    - Siempre mantener datos extraídos del OCR cuando sean específicos (lote, fecha de vencimiento)
+    
+    Args:
+        state: Estado actual del workflow
+        
+    Returns:
+        Estado final con datos enriquecidos y consolidados
+    """
+    logger.info("🔄 Iniciando finalización y enriquecimiento de datos")
+    
+    processed_medication = state.get("processed_medications")
+    gtin_found = state.get("gtin_found", False)
+    database_info = state.get("database_info")
+    semantic_results = state.get("semantic_results", [])
+    semantic_best_match = state.get("semantic_best_match")
+    enrichment_applied = state.get("enrichment_applied", False)
+    
+    logger.info(f"Estado inicial: GTIN encontrado={gtin_found}, Búsqueda semántica completada={len(semantic_results) > 0}")
+    
+    # CASO 1: Si se encontraron datos en la base de datos GTIN
+    if gtin_found and database_info:
+        logger.info("✅ Datos encontrados en BD GTIN - Priorizando información de base de datos")
+        
+        # Los datos ya fueron enriquecidos en el nodo exact_gtin_search
+        # Solo agregamos información de contexto sobre la fuente de datos
+        final_data_source = "database_gtin"
+        enrichment_confidence = 1.0  # Máxima confianza en datos de BD
+        
+        logger.info(f"Medicamento finalizado con datos de BD: {processed_medication.medication_name}")
+        
+    # CASO 2: NO se encontraron datos en BD GTIN, usar búsqueda semántica
+    elif not gtin_found and semantic_results and semantic_best_match:
+        logger.info("🔍 No se encontraron datos en BD GTIN - Usando búsqueda semántica para completar datos")
+        
+        similarity_score = semantic_best_match.get('similarity_score', 0.0)
+        enrichment_confidence = similarity_score
+        
+        # Completar campos faltantes con datos de búsqueda semántica si la confianza es suficiente
+        if similarity_score > 0.7:  # Umbral de confianza
+            logger.info(f"Completando datos faltantes con búsqueda semántica (confianza: {similarity_score:.3f})")
+            
+            # Completar solo campos que están vacíos o None desde OCR
+            if not processed_medication.medication_name and semantic_best_match.get('medication_name'):
+                processed_medication.medication_name = semantic_best_match['medication_name']
+                logger.info(f"Completado medication_name: {semantic_best_match['medication_name']}")
+                
+            if not processed_medication.common_denomination and semantic_best_match.get('common_denomination'):
+                processed_medication.common_denomination = semantic_best_match['common_denomination']
+                logger.info(f"Completado common_denomination: {semantic_best_match['common_denomination']}")
+                
+            if not processed_medication.concentration and semantic_best_match.get('concentration'):
+                processed_medication.concentration = semantic_best_match['concentration']
+                logger.info(f"Completado concentration: {semantic_best_match['concentration']}")
+                
+            if not processed_medication.form and semantic_best_match.get('form'):
+                processed_medication.form = semantic_best_match['form']
+                logger.info(f"Completado form: {semantic_best_match['form']}")
+                
+            if not processed_medication.form_simple and semantic_best_match.get('form_simple'):
+                processed_medication.form_simple = semantic_best_match['form_simple']
+                logger.info(f"Completado form_simple: {semantic_best_match['form_simple']}")
+                
+            if not processed_medication.brand_name and semantic_best_match.get('brand_name'):
+                processed_medication.brand_name = semantic_best_match['brand_name']
+                logger.info(f"Completado brand_name: {semantic_best_match['brand_name']}")
+                
+            if not processed_medication.country and semantic_best_match.get('country'):
+                processed_medication.country = semantic_best_match['country']
+                logger.info(f"Completado country: {semantic_best_match['country']}")
+                
+            if not processed_medication.presentation and semantic_best_match.get('presentation'):
+                processed_medication.presentation = semantic_best_match['presentation']
+                logger.info(f"Completado presentation: {semantic_best_match['presentation']}")
+                
+            if not processed_medication.product_type and semantic_best_match.get('product_type'):
+                processed_medication.product_type = semantic_best_match['product_type']
+                logger.info(f"Completado product_type: {semantic_best_match['product_type']}")
+                
+            if not processed_medication.fractions and semantic_best_match.get('fractions'):
+                processed_medication.fractions = str(semantic_best_match['fractions'])
+                logger.info(f"Completado fractions: {semantic_best_match['fractions']}")
+            
+            final_data_source = "semantic_search"
+            logger.info(f"✅ Medicamento enriquecido con búsqueda semántica (confianza: {similarity_score:.3f})")
+        else:
+            final_data_source = "ocr_only"
+            enrichment_confidence = 0.0
+            logger.info("❌ Búsqueda semántica con baja confianza - Manteniendo solo datos de OCR")
+            
+    # CASO 3: No se encontraron datos en ninguna fuente
+    else:
+        logger.warning("⚠️ No se encontraron datos complementarios - Solo datos extraídos por OCR")
+        final_data_source = "ocr_only"
+        enrichment_confidence = 0.0
+    
+    # Validar campos críticos
+    missing_critical_fields = []
+    if not processed_medication.medication_name:
+        missing_critical_fields.append("medication_name")
+    if not processed_medication.bar_code:
+        missing_critical_fields.append("bar_code")
+        
+    if missing_critical_fields:
+        logger.warning(f"⚠️ Campos críticos faltantes: {missing_critical_fields}")
+    
+    # Crear resumen de completitud de datos
+    completeness_summary = {
+        "medication_name": bool(processed_medication.medication_name),
+        "common_denomination": bool(processed_medication.common_denomination),
+        "concentration": bool(processed_medication.concentration),
+        "form": bool(processed_medication.form),
+        "brand_name": bool(processed_medication.brand_name),
+        "bar_code": bool(processed_medication.bar_code),
+        "lot_number": bool(processed_medication.lot_number),
+        "expiration_date": bool(processed_medication.expiration_date),
+        "presentation": bool(processed_medication.presentation),
+        "country": bool(processed_medication.country)
+    }
+    
+    completed_fields = sum(completeness_summary.values())
+    total_fields = len(completeness_summary)
+    completeness_percentage = (completed_fields / total_fields) * 100
+    
+    logger.info(f"📊 Completitud de datos: {completed_fields}/{total_fields} campos ({completeness_percentage:.1f}%)")
+    logger.info(f"🏁 Finalización completada - Fuente principal: {final_data_source}")
+    
+    return {
+        "processed_medications": processed_medication,
+        "final_data_source": final_data_source,
+        "enrichment_confidence": enrichment_confidence,
+        "completeness_summary": completeness_summary,
+        "completeness_percentage": completeness_percentage,
+        "missing_critical_fields": missing_critical_fields,
+        "workflow_completed": True
+    }
+
+
 class OCRGatewayGraph(GraphBuilder):
     """Builder para crear un flujo de trabajo con gateway OCR y verificación GTIN"""
 
@@ -122,6 +267,8 @@ class OCRGatewayGraph(GraphBuilder):
         # Nodos de búsqueda condicional
         self.graph.add_node("exact_gtin_search", check_gtin_in_database_v3)
         self.graph.add_node("semantic_search", search_medications_semantic)
+        # Nodo de finalización
+        self.graph.add_node("finalize_data_enrichment", finalize_data_enrichment)
 
     def add_edges(self) -> None:
         """Define todos los bordes en el grafo: primero procesamiento, luego verificación GTIN"""
@@ -141,8 +288,11 @@ class OCRGatewayGraph(GraphBuilder):
                 "semantic_search": "semantic_search"
             }
         )
-        self.graph.add_edge("exact_gtin_search", END)
-        self.graph.add_edge("semantic_search", END)
+        # Ambos nodos de búsqueda van al nodo de finalización
+        self.graph.add_edge("exact_gtin_search", "finalize_data_enrichment")
+        self.graph.add_edge("semantic_search", "finalize_data_enrichment")
+        # El nodo de finalización termina el flujo
+        self.graph.add_edge("finalize_data_enrichment", END)
 
     def conditional_edges(self) -> None:
         """Agrega lógica de enrutamiento condicional (no necesaria para este flujo simple)"""

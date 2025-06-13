@@ -68,3 +68,10 @@ class MedicationExtractionState(TypedDict):
     semantic_best_match: NotRequired[Dict[str, Any]]
     semantic_search_query: NotRequired[str]
     enrichment_applied: NotRequired[bool]
+    # Campos agregados para el nodo de finalización
+    final_data_source: NotRequired[str]
+    enrichment_confidence: NotRequired[float]
+    completeness_summary: NotRequired[Dict[str, bool]]
+    completeness_percentage: NotRequired[float]
+    missing_critical_fields: NotRequired[List[str]]
+    workflow_completed: NotRequired[bool]
