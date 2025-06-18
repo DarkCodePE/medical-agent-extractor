@@ -315,6 +315,7 @@ class MedicationVectorService:
     async def search_medications_semantic(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Busca medicamentos usando búsqueda semántica con filtros opcionales de metadata.
+        Incluye fallback automático si fallan los filtros.
 
         Args:
             query: Texto de búsqueda (nombre, ingrediente, concentración, etc.)
@@ -332,28 +333,62 @@ class MedicationVectorService:
             # Crear embedding de la consulta
             query_vector = await self.embeddings.aembed_query(query)
 
-            # Configurar búsqueda con filtros opcionales
+            # Configurar búsqueda base
             search_params = {
                 "collection_name": self.collection_name,
                 "query_vector": query_vector,
                 "limit": limit,
-                "score_threshold": 0.5  # Filtrar resultados con baja similitud
+                "score_threshold": 0.4  # Umbral más bajo para mayor flexibilidad
             }
 
-            # Agregar filtros de metadata si están disponibles
-            if filters:
-                from qdrant_client.http import models
-                search_params["query_filter"] = models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key=key,
-                            match=models.MatchValue(value=value)
-                        ) for key, value in filters.items() if value is not None
-                    ]
-                )
+            search_results = None
+            search_method = "semantic"
 
-            # Buscar en Qdrant
-            search_results = self.qdrant_client.search(**search_params)
+            # INTENTO 1: Búsqueda con filtros (si están disponibles)
+            if filters and len(filters) > 0:
+                try:
+                    from qdrant_client.http import models
+                    
+                    # Crear filtros válidos (solo los que no sean None o vacíos)
+                    valid_filters = {k: v for k, v in filters.items() 
+                                   if v is not None and str(v).strip() != ''}
+                    
+                    if valid_filters:
+                        filter_conditions = []
+                        for key, value in valid_filters.items():
+                            filter_conditions.append(
+                                models.FieldCondition(
+                                    key=key,
+                                    match=models.MatchValue(value=value)
+                                )
+                            )
+                        
+                        search_params_filtered = search_params.copy()
+                        search_params_filtered["query_filter"] = models.Filter(must=filter_conditions)
+                        
+                        logger.info(f"🎯 Intentando búsqueda con {len(valid_filters)} filtros válidos")
+                        search_results = self.qdrant_client.search(**search_params_filtered)
+                        search_method = f"semantic_filtered_{len(valid_filters)}"
+                        
+                        logger.info(f"✅ Búsqueda con filtros exitosa: {len(search_results)} resultados")
+                    else:
+                        logger.warning("⚠️ No hay filtros válidos disponibles")
+                        
+                except Exception as filter_error:
+                    logger.warning(f"⚠️ Error en búsqueda con filtros: {str(filter_error)}")
+                    logger.info("🔄 Fallback: Intentando búsqueda sin filtros...")
+                    search_results = None
+
+            # INTENTO 2: Búsqueda sin filtros (fallback o búsqueda principal)
+            if search_results is None or len(search_results) == 0:
+                logger.info("🔍 Ejecutando búsqueda semántica sin filtros")
+                try:
+                    search_results = self.qdrant_client.search(**search_params)
+                    search_method = "semantic_no_filters"
+                    logger.info(f"✅ Búsqueda sin filtros exitosa: {len(search_results)} resultados")
+                except Exception as no_filter_error:
+                    logger.error(f"❌ Error en búsqueda sin filtros: {str(no_filter_error)}")
+                    return []
 
             # Formatear resultados
             medications = []
@@ -377,15 +412,17 @@ class MedicationVectorService:
                     "fractions": payload.get("fractions"),
                     "state": payload.get("state"),
                     "similarity_score": result.score,
-                    "search_method": "semantic_filtered" if filters else "semantic",
+                    "search_method": search_method,
                     "vectorized_at": payload.get("vectorized_at")
                 })
 
-            logger.info(f"✅ Encontrados {len(medications)} medicamentos por búsqueda semántica")
+            logger.info(f"✅ Encontrados {len(medications)} medicamentos | Método: {search_method}")
             return medications
 
         except Exception as e:
-            logger.error(f"❌ Error en búsqueda semántica: {str(e)}")
+            logger.error(f"❌ Error general en búsqueda semántica: {str(e)}")
+            import traceback
+            logger.error(f"🔍 Stack trace: {traceback.format_exc()}")
             return []
 
     def get_collection_stats(self) -> Dict[str, Any]:
