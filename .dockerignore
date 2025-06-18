@@ -1,0 +1,52 @@
+# ENTORNOS VIRTUALES (MUY IMPORTANTE - esto causa el 1GB)
+.venv/
+venv/
+env/
+.env_backup
+
+# Python cache y builds
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Documentación y tests (no necesarios en producción)
+docs/
+test/
+tests/
+*.md
+README.md
+
+# Logs
+*.log
+logs/
+
+# Archivos de desarrollo
+test_main.http
+*.http
+
+# Dependencias que se instalan en el contenedor
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose*
+
+# Opcional: si langgraph_api no es necesario para producción
+# langgraph_api/
