@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, TypedDict, Annotated
+from typing import Dict, Any, List, Optional, TypedDict, Annotated, Union
 from fastapi import UploadFile
 from typing_extensions import NotRequired
 import operator
@@ -57,7 +57,8 @@ class MedicationExtractionState(TypedDict):
     #extracted_texts: List[str]
     extracted_texts: Annotated[List[str], operator.add]
     structured_contents: List[Dict[str, Any]]
-    processed_medications: MedicationDetails
+    processed_medications: MedicationDetails  # Solo datos extraídos del OCR
+    processed_enrichment_medications: NotRequired[MedicationDetails]  # Datos finales enriquecidos
     error: str
     ocr_provider: str
     gtin_found: NotRequired[bool]
@@ -80,3 +81,6 @@ class MedicationExtractionState(TypedDict):
     search_confidence: NotRequired[float]
     confidence_threshold_used: NotRequired[float]
     search_stats: NotRequired[Dict[str, Any]]
+    # Campos de trazabilidad del enriquecimiento
+    enrichment_source_fields: NotRequired[Dict[str, str]]  # Qué campo vino de qué fuente
+    ocr_vs_enriched_comparison: NotRequired[Dict[str, Any]]  # Comparación entre OCR y enriquecido

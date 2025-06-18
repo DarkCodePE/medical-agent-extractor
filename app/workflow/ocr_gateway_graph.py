@@ -96,6 +96,10 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
     Nodo de finalización que combina y completa los datos del medicamento
     usando información de la base de datos GTIN y/o búsqueda semántica.
     
+    Crea dos versiones:
+    1. processed_medications: Solo datos extraídos del OCR (sin modificar)
+    2. processed_enrichment_medications: Datos enriquecidos con BD/búsqueda semántica
+    
     Lógica:
     - Si se encontraron datos en BD GTIN: usar preferentemente esos datos
     - Si NO se encontraron datos en BD GTIN: usar datos de búsqueda semántica para completar campos faltantes
@@ -109,25 +113,42 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
     """
     logger.info("🔄 Iniciando finalización y enriquecimiento de datos")
     
-    processed_medication = state.get("processed_medications")
+    # Datos originales del OCR (NO modificar)
+    original_ocr_medication = state.get("processed_medications")
     gtin_found = state.get("gtin_found", False)
     database_info = state.get("database_info")
     semantic_results = state.get("semantic_results", [])
     semantic_best_match = state.get("semantic_best_match")
     enrichment_applied = state.get("enrichment_applied", False)
     
+    # Crear una COPIA para enriquecimiento (preservar original)
+    import copy
+    enriched_medication = copy.deepcopy(original_ocr_medication)
+    
+    # Diccionario para rastrear qué campos vinieron de qué fuente
+    enrichment_source_fields = {}
+    
     logger.info(f"Estado inicial: GTIN encontrado={gtin_found}, Búsqueda semántica completada={len(semantic_results) > 0}")
     
     # CASO 1: Si se encontraron datos en la base de datos GTIN
     if gtin_found and database_info:
-        logger.info("✅ Datos encontrados en BD GTIN - Priorizando información de base de datos")
+        logger.info("✅ Datos encontrados en BD GTIN - Enriqueciendo con información de base de datos")
         
-        # Los datos ya fueron enriquecidos en el nodo exact_gtin_search
-        # Solo agregamos información de contexto sobre la fuente de datos
+        # Enriquecer campos desde la base de datos GTIN
+        for field_name, db_value in database_info.items():
+            if db_value and hasattr(enriched_medication, field_name):
+                original_value = getattr(enriched_medication, field_name)
+                if not original_value:  # Solo completar campos vacíos
+                    setattr(enriched_medication, field_name, db_value)
+                    enrichment_source_fields[field_name] = "database_gtin"
+                    logger.info(f"🏥 Enriquecido {field_name}: {db_value} (BD GTIN)")
+                else:
+                    enrichment_source_fields[field_name] = "ocr_original"
+                    
         final_data_source = "database_gtin"
         enrichment_confidence = 1.0  # Máxima confianza en datos de BD
         
-        logger.info(f"Medicamento finalizado con datos de BD: {processed_medication.medication_name}")
+        logger.info(f"Medicamento finalizado con datos de BD: {enriched_medication.medication_name}")
         
     # CASO 2: NO se encontraron datos en BD GTIN, usar búsqueda semántica
     elif not gtin_found and semantic_results and semantic_best_match:
@@ -140,46 +161,34 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
         if similarity_score > 0.7:  # Umbral de confianza
             logger.info(f"Completando datos faltantes con búsqueda semántica (confianza: {similarity_score:.3f})")
             
+            # Mapeo de campos para enriquecimiento semántico
+            semantic_field_mapping = {
+                'medication_name': 'medication_name',
+                'common_denomination': 'common_denomination', 
+                'concentration': 'concentration',
+                'form': 'form',
+                'form_simple': 'form_simple',
+                'brand_name': 'brand_name',
+                'country': 'country',
+                'presentation': 'presentation',
+                'product_type': 'product_type',
+                'fractions': 'fractions'
+            }
+            
             # Completar solo campos que están vacíos o None desde OCR
-            if not processed_medication.medication_name and semantic_best_match.get('medication_name'):
-                processed_medication.medication_name = semantic_best_match['medication_name']
-                logger.info(f"Completado medication_name: {semantic_best_match['medication_name']}")
+            for field_name, semantic_key in semantic_field_mapping.items():
+                original_value = getattr(enriched_medication, field_name, None)
+                semantic_value = semantic_best_match.get(semantic_key)
                 
-            if not processed_medication.common_denomination and semantic_best_match.get('common_denomination'):
-                processed_medication.common_denomination = semantic_best_match['common_denomination']
-                logger.info(f"Completado common_denomination: {semantic_best_match['common_denomination']}")
-                
-            if not processed_medication.concentration and semantic_best_match.get('concentration'):
-                processed_medication.concentration = semantic_best_match['concentration']
-                logger.info(f"Completado concentration: {semantic_best_match['concentration']}")
-                
-            if not processed_medication.form and semantic_best_match.get('form'):
-                processed_medication.form = semantic_best_match['form']
-                logger.info(f"Completado form: {semantic_best_match['form']}")
-                
-            if not processed_medication.form_simple and semantic_best_match.get('form_simple'):
-                processed_medication.form_simple = semantic_best_match['form_simple']
-                logger.info(f"Completado form_simple: {semantic_best_match['form_simple']}")
-                
-            if not processed_medication.brand_name and semantic_best_match.get('brand_name'):
-                processed_medication.brand_name = semantic_best_match['brand_name']
-                logger.info(f"Completado brand_name: {semantic_best_match['brand_name']}")
-                
-            if not processed_medication.country and semantic_best_match.get('country'):
-                processed_medication.country = semantic_best_match['country']
-                logger.info(f"Completado country: {semantic_best_match['country']}")
-                
-            if not processed_medication.presentation and semantic_best_match.get('presentation'):
-                processed_medication.presentation = semantic_best_match['presentation']
-                logger.info(f"Completado presentation: {semantic_best_match['presentation']}")
-                
-            if not processed_medication.product_type and semantic_best_match.get('product_type'):
-                processed_medication.product_type = semantic_best_match['product_type']
-                logger.info(f"Completado product_type: {semantic_best_match['product_type']}")
-                
-            if not processed_medication.fractions and semantic_best_match.get('fractions'):
-                processed_medication.fractions = str(semantic_best_match['fractions'])
-                logger.info(f"Completado fractions: {semantic_best_match['fractions']}")
+                if not original_value and semantic_value:
+                    if field_name == 'fractions':
+                        setattr(enriched_medication, field_name, str(semantic_value))
+                    else:
+                        setattr(enriched_medication, field_name, semantic_value)
+                    enrichment_source_fields[field_name] = "semantic_search"
+                    logger.info(f"🔍 Enriquecido {field_name}: {semantic_value} (Semántico)")
+                elif original_value:
+                    enrichment_source_fields[field_name] = "ocr_original"
             
             final_data_source = "semantic_search"
             logger.info(f"✅ Medicamento enriquecido con búsqueda semántica (confianza: {similarity_score:.3f})")
@@ -193,45 +202,68 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
         logger.warning("⚠️ No se encontraron datos complementarios - Solo datos extraídos por OCR")
         final_data_source = "ocr_only"
         enrichment_confidence = 0.0
+        
+        # Marcar todos los campos existentes como originales de OCR
+        for field_name in ['medication_name', 'common_denomination', 'concentration', 'form', 
+                          'form_simple', 'brand_name', 'country', 'presentation', 'product_type', 'fractions']:
+            if getattr(enriched_medication, field_name, None):
+                enrichment_source_fields[field_name] = "ocr_original"
     
-    # Validar campos críticos
+    # Validar campos críticos (basado en la versión enriquecida)
     missing_critical_fields = []
-    if not processed_medication.medication_name:
+    if not enriched_medication.medication_name:
         missing_critical_fields.append("medication_name")
-    if not processed_medication.bar_code:
+    if not enriched_medication.bar_code:
         missing_critical_fields.append("bar_code")
         
     if missing_critical_fields:
         logger.warning(f"⚠️ Campos críticos faltantes: {missing_critical_fields}")
     
-    # Crear resumen de completitud de datos
+    # Crear resumen de completitud de datos (versión enriquecida)
     completeness_summary = {
-        "medication_name": bool(processed_medication.medication_name),
-        "common_denomination": bool(processed_medication.common_denomination),
-        "concentration": bool(processed_medication.concentration),
-        "form": bool(processed_medication.form),
-        "brand_name": bool(processed_medication.brand_name),
-        "bar_code": bool(processed_medication.bar_code),
-        "lot_number": bool(processed_medication.lot_number),
-        "expiration_date": bool(processed_medication.expiration_date),
-        "presentation": bool(processed_medication.presentation),
-        "country": bool(processed_medication.country)
+        "medication_name": bool(enriched_medication.medication_name),
+        "common_denomination": bool(enriched_medication.common_denomination),
+        "concentration": bool(enriched_medication.concentration),
+        "form": bool(enriched_medication.form),
+        "brand_name": bool(enriched_medication.brand_name),
+        "bar_code": bool(enriched_medication.bar_code),
+        "lot_number": bool(enriched_medication.lot_number),
+        "expiration_date": bool(enriched_medication.expiration_date),
+        "presentation": bool(enriched_medication.presentation),
+        "country": bool(enriched_medication.country)
     }
     
     completed_fields = sum(completeness_summary.values())
     total_fields = len(completeness_summary)
     completeness_percentage = (completed_fields / total_fields) * 100
     
+    # Crear comparación entre OCR original y enriquecido
+    ocr_vs_enriched_comparison = {}
+    for field_name in completeness_summary.keys():
+        ocr_value = getattr(original_ocr_medication, field_name, None)
+        enriched_value = getattr(enriched_medication, field_name, None)
+        
+        ocr_vs_enriched_comparison[field_name] = {
+            "ocr_original": ocr_value,
+            "enriched": enriched_value,
+            "was_enriched": bool(not ocr_value and enriched_value),
+            "source": enrichment_source_fields.get(field_name, "unknown")
+        }
+    
     logger.info(f"📊 Completitud de datos: {completed_fields}/{total_fields} campos ({completeness_percentage:.1f}%)")
+    logger.info(f"🔍 Campos enriquecidos: {len([f for f, s in enrichment_source_fields.items() if s in ['database_gtin', 'semantic_search']])}")
     logger.info(f"🏁 Finalización completada - Fuente principal: {final_data_source}")
     
     return {
-        "processed_medications": processed_medication,
+        "processed_medications": original_ocr_medication,  # Datos originales del OCR
+        "processed_enrichment_medications": enriched_medication,  # Datos enriquecidos
         "final_data_source": final_data_source,
         "enrichment_confidence": enrichment_confidence,
         "completeness_summary": completeness_summary,
         "completeness_percentage": completeness_percentage,
         "missing_critical_fields": missing_critical_fields,
+        "enrichment_source_fields": enrichment_source_fields,
+        "ocr_vs_enriched_comparison": ocr_vs_enriched_comparison,
         "workflow_completed": True
     }
 

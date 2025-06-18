@@ -27,9 +27,6 @@ app.include_router(
 app.include_router(
     vectorization.router
 )
-# Inicializa la base de datos
-#init_db()
-
 
 # Health check endpoint
 @app.get("/health")
