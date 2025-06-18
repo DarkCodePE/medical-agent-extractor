@@ -30,20 +30,42 @@ async def search_medications_semantic_optimized(state: Dict[str, Any]) -> Dict[s
     # PASO 1: Construir FILTROS (solo datos categóricos confiables)
     filters = {}
     
+    # Validar y normalizar common_denomination
     common_denomination = getattr(processed_medication, 'common_denomination', None)
-    if common_denomination and common_denomination.strip():
-        filters["common_denomination"] = common_denomination.upper()
-        logger.info(f"🎯 Filtro por common_denomination: {common_denomination}")
+    if common_denomination and isinstance(common_denomination, str) and len(common_denomination.strip()) > 2:
+        normalized_cd = common_denomination.strip().upper()
+        # Verificar que no sea un valor genérico o vacío
+        if normalized_cd not in ['N/A', 'NULL', 'NONE', 'UNKNOWN', '']:
+            filters["common_denomination"] = normalized_cd
+            logger.info(f"🎯 Filtro por common_denomination: {normalized_cd}")
+        else:
+            logger.warning(f"⚠️ common_denomination inválido: '{common_denomination}' - omitiendo filtro")
+    else:
+        logger.warning("⚠️ common_denomination no disponible o muy corto - omitiendo filtro")
         
+    # Validar y normalizar product_type
     product_type = getattr(processed_medication, 'product_type', None)
-    if product_type and product_type.strip():
-        filters["product_type"] = product_type.upper()
-        logger.info(f"🎯 Filtro por product_type: {product_type}")
+    if product_type and isinstance(product_type, str) and len(product_type.strip()) > 2:
+        normalized_pt = product_type.strip().upper()
+        if normalized_pt not in ['N/A', 'NULL', 'NONE', 'UNKNOWN', '']:
+            filters["product_type"] = normalized_pt
+            logger.info(f"🎯 Filtro por product_type: {normalized_pt}")
+        else:
+            logger.warning(f"⚠️ product_type inválido: '{product_type}' - omitiendo filtro")
+    else:
+        logger.warning("⚠️ product_type no disponible o muy corto - omitiendo filtro")
         
+    # Validar y normalizar form_simple
     form_simple = getattr(processed_medication, 'form_simple', None)
-    if form_simple and form_simple.strip():
-        filters["form_simple"] = form_simple.upper()
-        logger.info(f"🎯 Filtro por form_simple: {form_simple}")
+    if form_simple and isinstance(form_simple, str) and len(form_simple.strip()) > 2:
+        normalized_fs = form_simple.strip().upper()
+        if normalized_fs not in ['N/A', 'NULL', 'NONE', 'UNKNOWN', '']:
+            filters["form_simple"] = normalized_fs
+            logger.info(f"🎯 Filtro por form_simple: {normalized_fs}")
+        else:
+            logger.warning(f"⚠️ form_simple inválido: '{form_simple}' - omitiendo filtro")
+    else:
+        logger.warning("⚠️ form_simple no disponible o muy corto - omitiendo filtro")
     
     # PASO 2: Construir QUERY (incluye datos numéricos/aproximados)
     search_terms = []
@@ -75,22 +97,22 @@ async def search_medications_semantic_optimized(state: Dict[str, Any]) -> Dict[s
     if len(filters) >= 2:
         # Estrategia PRECISA: Múltiples filtros disponibles
         search_strategy = "PRECISE_FILTERING"
-        confidence_threshold = 0.75
-        search_limit = 3
+        confidence_threshold = 0.60  # Reducido de 0.75 a 0.60
+        search_limit = 5            # Aumentado de 3 a 5
         logger.info("🎯 Estrategia PRECISA: Múltiples filtros disponibles")
         
     elif len(filters) == 1:
         # Estrategia MODERADA: Un filtro disponible
         search_strategy = "MODERATE_FILTERING"
-        confidence_threshold = 0.80
-        search_limit = 4
+        confidence_threshold = 0.65  # Reducido de 0.80 a 0.65
+        search_limit = 6             # Aumentado de 4 a 6
         logger.info("🎯 Estrategia MODERADA: Un filtro disponible")
         
     else:
         # Estrategia CONSERVADORA: Sin filtros
         search_strategy = "SEMANTIC_ONLY"
-        confidence_threshold = 0.85
-        search_limit = 5
+        confidence_threshold = 0.70  # Reducido de 0.85 a 0.70
+        search_limit = 8             # Aumentado de 5 a 8
         logger.info("🎯 Estrategia CONSERVADORA: Sin filtros categóricos")
     
     # PASO 4: Ejecutar búsqueda única con estrategia seleccionada
