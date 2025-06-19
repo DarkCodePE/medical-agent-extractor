@@ -64,25 +64,20 @@ class ProcessingResult(BaseModel):
 
 class MedicationRegistrationRequest(BaseModel):
     """Modelo para registrar un medicamento enriquecido en la base de datos GTIN"""
+    # Datos del medicamento
+    medication_data: MedicationData = Field(..., description="Datos del medicamento extraído y enriquecido")
     gtin_code: str = Field(..., description="Código GTIN del medicamento", example="7750304964586")
-    gtin_code_type: str = Field(..., description="Tipo de código GTIN", example="GTIN_13")
-    pharmacy_type: Optional[str] = Field("M", description="Tipo de farmacia", example="M")
-    product_type: str = Field(..., description="Tipo de producto", example="PRODUCTO FARMACEUTICO")
-    medication_name: str = Field(..., description="Nombre del medicamento", example="Bronpax")
-    common_denomination: str = Field(..., description="Denominación común", example="Ambroxol")
-    concentration: str = Field(..., description="Concentración", example="7.5 mg/mL")
-    form: str = Field(..., description="Forma farmacéutica", example="Solución oral")
-    form_simple: str = Field(..., description="Forma simple", example="Gotas")
-    brand_name: str = Field(..., description="Marca", example="FARMINDUSTRIA")
-    country: str = Field(..., description="País", example="PERÚ")
-    presentation: str = Field(..., description="Presentación", example="20mL")
-    code_rs_list: Optional[str] = Field(None, description="Código RS", example="EN04755")
-    fractions: str = Field("1", description="Número de fracciones", example="1")
-    state: Optional[str] = Field("ACTIVO", description="Estado del medicamento", example="ACTIVO")
-    # Metadatos del enriquecimiento
+    
+    # Metadatos del proceso
     enrichment_source: str = Field(..., description="Fuente del enriquecimiento", example="semantic_search")
     enrichment_confidence: float = Field(..., description="Confianza del enriquecimiento", example=0.87)
     user_approved: bool = Field(True, description="Si fue aprobado por el usuario", example=True)
+    
+    # Campos opcionales con defaults
+    gtin_code_type: Optional[str] = Field(None, description="Tipo de código GTIN (se determina automáticamente)", example="GTIN_13")
+    pharmacy_type: Optional[str] = Field("M", description="Tipo de farmacia", example="M")
+    code_rs_list: Optional[str] = Field(None, description="Código RS", example="EN04755")
+    state: Optional[str] = Field("ACTIVO", description="Estado del medicamento", example="ACTIVO")
 
 
 class MedicationRegistrationResponse(BaseModel):
@@ -339,123 +334,121 @@ async def extract_medication_info(
              },
              summary="Registrar medicamento enriquecido en base de datos GTIN",
              description="""
-## 📝 Registro de Medicamento Enriquecido
+## 📝 Registro de Medicamento Enriquecido con IA
 
-Este endpoint permite registrar un medicamento enriquecido en la base de datos GTIN después de que el usuario apruebe los datos.
+Este endpoint registra directamente un medicamento enriquecido en la base de datos GTIN, 
+preparando automáticamente los datos y marcándolo como generado por IA.
 
-### 🔍 **Flujo Típico:**
-1. **Extracción**: Se extraen datos con OCR y se enriquecen con búsqueda semántica
-2. **Revisión**: El frontend muestra los datos enriquecidos al usuario
-3. **Aprobación**: El usuario valida y aprueba los datos
-4. **Registro**: Este endpoint registra el medicamento en la BD GTIN
+### 🔍 **Flujo Simplificado:**
+1. **Recibe datos**: Acepta directamente `MedicationData` del endpoint `/extract`
+2. **Preparación automática**: Mapea y valida los campos requeridos
+3. **Registro completo**: Inserta en BD con flag `IsAiGenerated = true`
+4. **Vectorización automática**: Actualiza Qdrant para futuras búsquedas
 
-### 📊 **Validaciones:**
+### 📊 **Validaciones Automáticas:**
+- Determina tipo de GTIN por longitud del código
 - Verifica que el GTIN no exista previamente
-- Valida formato de campos obligatorios
-- Registra metadatos de enriquecimiento para auditoría
+- Valida campos obligatorios automáticamente
+- Marca como generado por IA para auditoría
 
-### 🛡️ **Seguridad:**
-- Solo acepta medicamentos aprobados por usuario (`user_approved: true`)
-- Mantiene trazabilidad de la fuente de enriquecimiento
+### 🛡️ **Seguridad y Trazabilidad:**
+- Solo acepta medicamentos aprobados por usuario
+- Mantiene metadatos de enriquecimiento completos
 - Registra confianza del algoritmo de enriquecimiento
+- Flag `IsAiGenerated` para diferencial de registros manuales
              """)
 async def register_enriched_medication(
-    medication_data: MedicationRegistrationRequest
+    request: MedicationRegistrationRequest
 ):
     """
-    Registra un medicamento enriquecido en la base de datos GTIN.
+    Registra un medicamento enriquecido directamente en la base de datos GTIN.
     
     Args:
-        medication_data: Datos del medicamento a registrar
+        request: Datos del medicamento y metadatos de enriquecimiento
         
     Returns:
         Confirmación de registro exitoso
     """
     try:
-        logger.info(f"🔄 Iniciando registro de medicamento enriquecido: {medication_data.gtin_code}")
+        logger.info(f"🔄 Iniciando registro de medicamento enriquecido: {request.gtin_code}")
         
         # Validar que el usuario haya aprobado los datos
-        if not medication_data.user_approved:
+        if not request.user_approved:
             raise HTTPException(
                 status_code=400, 
                 detail="No se puede registrar medicamento sin aprobación del usuario"
             )
         
+        # Validar campos obligatorios del medicamento
+        if not request.medication_data.medication_name:
+            raise HTTPException(status_code=400, detail="medication_name es obligatorio")
+        if not request.medication_data.common_denomination:
+            raise HTTPException(status_code=400, detail="common_denomination es obligatorio")
+        if not request.gtin_code:
+            raise HTTPException(status_code=400, detail="gtin_code es obligatorio")
+        
+        # Determinar tipo de GTIN automáticamente
+        gtin_code_clean = request.gtin_code.strip().replace('-', '').replace(' ', '')
+        gtin_type_mapping = {
+            8: "GTIN_8",
+            12: "GTIN_12", 
+            13: "GTIN_13",
+            14: "GTIN_14"
+        }
+        gtin_type = request.gtin_code_type or gtin_type_mapping.get(len(gtin_code_clean), "GTIN_13")
+        
         # Inicializar servicio GTIN
         gtin_service = GtinService()
         
         # Verificar que el GTIN no exista previamente
-        existing_medication = gtin_service.query_gtin(medication_data.gtin_code)
+        existing_medication = gtin_service.query_gtin(gtin_code_clean)
         if existing_medication:
-            logger.warning(f"⚠️ GTIN {medication_data.gtin_code} ya existe en la base de datos")
+            logger.warning(f"⚠️ GTIN {gtin_code_clean} ya existe en la base de datos")
             raise HTTPException(
                 status_code=400,
-                detail=f"El medicamento con GTIN {medication_data.gtin_code} ya existe en la base de datos"
+                detail=f"El medicamento con GTIN {gtin_code_clean} ya existe en la base de datos"
             )
         
-        # Preparar datos para inserción en la BD
-        medication_insert_data = {
-            "GtinCode": medication_data.gtin_code,
-            "GtinCodeType": medication_data.gtin_code_type,
-            "PharmacyType": medication_data.pharmacy_type,
-            "ProductType": medication_data.product_type,
-            "Name": medication_data.medication_name,
-            "CommonDenomination": medication_data.common_denomination,
-            "Concentration": medication_data.concentration,
-            "Form": medication_data.form,
-            "FormSimple": medication_data.form_simple,
-            "BrandName": medication_data.brand_name,
-            "Country": medication_data.country,
-            "Presentation": medication_data.presentation,
-            "CodeRsList": medication_data.code_rs_list,
-            "Fractions": medication_data.fractions,
-            "State": medication_data.state,
-            # Metadatos de enriquecimiento (campos adicionales)
-            "EnrichmentSource": medication_data.enrichment_source,
-            "EnrichmentConfidence": medication_data.enrichment_confidence,
-            "UserApproved": medication_data.user_approved,
-            "CreatedAt": "GETDATE()",  # SQL Server timestamp
-            "CreatedBy": "semantic_enrichment_api"
-        }
-        
-        # Construir query de inserción
+        # Construir query de inserción con el nuevo campo IsAiGenerated
         insert_query = """
         INSERT INTO [registroclinico].[ItemsGtin] (
             GtinCode, GtinCodeType, PharmacyType, ProductType, Name,
             CommonDenomination, Concentration, Form, FormSimple, BrandName,
-            Country, Presentation, CodeRsList, Fractions, State
+            Country, Presentation, CodeRsList, Fractions, State, IsAiGenerated
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?
         )
         """
         
-        # Ejecutar inserción
-        db_connection = gtin_service.db_connection
+        # Preparar parámetros para inserción
+        med_data = request.medication_data
         insert_params = [
-            medication_data.gtin_code,
-            medication_data.gtin_code_type,
-            medication_data.pharmacy_type,
-            medication_data.product_type,
-            medication_data.medication_name,
-            medication_data.common_denomination,
-            medication_data.concentration,
-            medication_data.form,
-            medication_data.form_simple,
-            medication_data.brand_name,
-            medication_data.country,
-            medication_data.presentation,
-            medication_data.code_rs_list,
-            medication_data.fractions,
-            medication_data.state
+            gtin_code_clean,
+            gtin_type,
+            request.pharmacy_type,
+            med_data.product_type or "PRODUCTO FARMACEUTICO",
+            med_data.medication_name,
+            med_data.common_denomination,
+            med_data.concentration or "",
+            med_data.form or "",
+            med_data.form_simple or "",
+            med_data.brand_name or "",
+            med_data.country or "",
+            med_data.presentation or "",
+            request.code_rs_list,
+            med_data.fractions or "1",
+            request.state,
+            True  # IsAiGenerated = true para medicamentos enriquecidos por IA
         ]
         
         # Ejecutar inserción
+        db_connection = gtin_service.db_connection
         db_connection.execute_insert_or_update(insert_query, insert_params)
         
         # Verificar que se insertó correctamente
-        verification_result = gtin_service.query_gtin(medication_data.gtin_code)
+        verification_result = gtin_service.query_gtin(gtin_code_clean)
         if not verification_result:
             raise HTTPException(
                 status_code=500,
@@ -464,13 +457,13 @@ async def register_enriched_medication(
         
         medication_id = verification_result.get('Id')
         
-        logger.info(f"✅ Medicamento registrado exitosamente: ID={medication_id}, GTIN={medication_data.gtin_code}")
+        logger.info(f"✅ Medicamento registrado exitosamente: ID={medication_id}, GTIN={gtin_code_clean}, IsAiGenerated=true")
         
-        # 🔄 PASO ADICIONAL: Vectorizar automáticamente el nuevo medicamento
+        # 🔄 Vectorización automática del nuevo medicamento
         try:
             logger.info(f"🔄 Iniciando vectorización automática del medicamento recién registrado")
             vector_service = MedicationVectorService()
-            vectorization_success = await vector_service.update_medication_vector(medication_data.gtin_code)
+            vectorization_success = await vector_service.update_medication_vector(gtin_code_clean)
             
             if vectorization_success:
                 logger.info(f"✅ Medicamento vectorizado exitosamente en Qdrant")
@@ -484,9 +477,9 @@ async def register_enriched_medication(
         from datetime import datetime
         return MedicationRegistrationResponse(
             status="success",
-            message=f"Medicamento '{medication_data.medication_name}' registrado exitosamente",
+            message=f"Medicamento '{med_data.medication_name}' registrado exitosamente como generado por IA",
             medication_id=medication_id,
-            gtin_code=medication_data.gtin_code,
+            gtin_code=gtin_code_clean,
             registered_at=datetime.utcnow().isoformat() + "Z"
         )
         
@@ -503,94 +496,3 @@ async def register_enriched_medication(
         )
 
 
-@router.post("/prepare-registration",
-             response_model=MedicationRegistrationRequest,
-             summary="Preparar datos de medicamento enriquecido para registro",
-             description="""
-## 🔄 Preparación de Datos para Registro
-
-Helper endpoint que convierte datos de `processed_enrichment_medications` al formato requerido 
-para el registro en base de datos GTIN.
-
-### 📋 **Uso:**
-1. El frontend recibe `processed_enrichment_medications` del endpoint `/extract`
-2. Llama a este endpoint para preparar los datos de registro
-3. Presenta los datos al usuario para aprobación
-4. Llama a `/register-enriched` cuando el usuario apruebe
-
-### ✅ **Ventajas:**
-- Mapeo automático de campos
-- Generación de metadatos de auditoría
-- Validación previa de datos requeridos
-             """)
-async def prepare_medication_registration(
-    medication_data: MedicationData,
-    enrichment_source: str = Query(..., description="Fuente del enriquecimiento", example="semantic_search"),
-    enrichment_confidence: float = Query(..., description="Confianza del enriquecimiento", example=0.87),
-    gtin_code: str = Query(..., description="Código GTIN extraído", example="7750304964586")
-):
-    """
-    Prepara los datos de medicamento enriquecido para registro en BD GTIN.
-    
-    Args:
-        medication_data: Datos del medicamento enriquecido
-        enrichment_source: Fuente del enriquecimiento (semantic_search, database_gtin)
-        enrichment_confidence: Nivel de confianza del enriquecimiento
-        gtin_code: Código GTIN del medicamento
-        
-    Returns:
-        Datos preparados para registro
-    """
-    try:
-        # Validar campos obligatorios
-        if not medication_data.medication_name:
-            raise HTTPException(status_code=400, detail="medication_name es obligatorio")
-        if not medication_data.common_denomination:
-            raise HTTPException(status_code=400, detail="common_denomination es obligatorio")
-        if not gtin_code:
-            raise HTTPException(status_code=400, detail="gtin_code es obligatorio")
-        
-        # Determinar tipo de GTIN basado en la longitud
-        gtin_type_mapping = {
-            8: "GTIN_8",
-            12: "GTIN_12", 
-            13: "GTIN_13",
-            14: "GTIN_14"
-        }
-        gtin_code_clean = gtin_code.strip().replace('-', '').replace(' ', '')
-        gtin_type = gtin_type_mapping.get(len(gtin_code_clean), "GTIN_13")
-        
-        # Mapear a formato de registro
-        registration_data = MedicationRegistrationRequest(
-            gtin_code=gtin_code_clean,
-            gtin_code_type=gtin_type,
-            pharmacy_type="M",  # Default
-            product_type=medication_data.product_type or "PRODUCTO FARMACEUTICO",
-            medication_name=medication_data.medication_name,
-            common_denomination=medication_data.common_denomination,
-            concentration=medication_data.concentration or "",
-            form=medication_data.form or "",
-            form_simple=medication_data.form_simple or "",
-            brand_name=medication_data.brand_name or "",
-            country=medication_data.country or "",
-            presentation=medication_data.presentation or "",
-            code_rs_list=None,  # No disponible desde OCR
-            fractions=medication_data.fractions or "1",
-            state="ACTIVO",
-            enrichment_source=enrichment_source,
-            enrichment_confidence=enrichment_confidence,
-            user_approved=False  # Requiere aprobación explícita del usuario
-        )
-        
-        logger.info(f"✅ Datos preparados para registro: {gtin_code_clean}")
-        return registration_data
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error preparando datos para registro: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error interno preparando datos: {str(e)}"
-        )
