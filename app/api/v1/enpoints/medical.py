@@ -409,43 +409,29 @@ async def register_enriched_medication(
                 detail=f"El medicamento con GTIN {gtin_code_clean} ya existe en la base de datos"
             )
         
-        # Construir query de inserción con el nuevo campo IsAiGenerated
-        insert_query = """
-        INSERT INTO [registroclinico].[ItemsGtin] (
-            GtinCode, GtinCodeType, PharmacyType, ProductType, Name,
-            CommonDenomination, Concentration, Form, FormSimple, BrandName,
-            Country, Presentation, CodeRsList, Fractions, State, IsAiGenerated
-        ) VALUES (
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?
-        )
-        """
-        
-        # Preparar parámetros para inserción
+        # Preparar datos para inserción
         med_data = request.medication_data
-        insert_params = [
-            gtin_code_clean,
-            gtin_type,
-            request.pharmacy_type,
-            med_data.product_type or "PRODUCTO FARMACEUTICO",
-            med_data.medication_name,
-            med_data.common_denomination,
-            med_data.concentration or "",
-            med_data.form or "",
-            med_data.form_simple or "",
-            med_data.brand_name or "",
-            med_data.country or "",
-            med_data.presentation or "",
-            request.code_rs_list,
-            med_data.fractions or "1",
-            request.state,
-            True  # IsAiGenerated = true para medicamentos enriquecidos por IA
-        ]
+        medication_insert_data = {
+            'GtinCode': gtin_code_clean,
+            'GtinCodeType': gtin_type,
+            'PharmacyType': request.pharmacy_type,
+            'ProductType': med_data.product_type or "PRODUCTO FARMACEUTICO",
+            'Name': med_data.medication_name,
+            'CommonDenomination': med_data.common_denomination,
+            'Concentration': med_data.concentration or "",
+            'Form': med_data.form or "",
+            'FormSimple': med_data.form_simple or "",
+            'BrandName': med_data.brand_name or "",
+            'Country': med_data.country or "",
+            'Presentation': med_data.presentation or "",
+            'CodeRsList': request.code_rs_list,
+            'Fractions': med_data.fractions or "1",
+            'State': request.state,
+            'IsAiGenerated': True  # Marcar como generado por IA
+        }
         
-        # Ejecutar inserción
-        db_connection = gtin_service.db_connection
-        db_connection.execute_insert_or_update(insert_query, insert_params)
+        # Ejecutar inserción usando el método específico del servicio
+        result = gtin_service.insert_medication(medication_insert_data)
         
         # Verificar que se insertó correctamente
         verification_result = gtin_service.query_gtin(gtin_code_clean)

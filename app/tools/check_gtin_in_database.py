@@ -341,6 +341,62 @@ class GtinService:
             # Return empty list instead of raising to avoid workflow interruption
             return []
 
+    def insert_medication(self, medication_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Insert a new medication into the database.
+
+        Args:
+            medication_data: Dictionary with medication data to insert
+
+        Returns:
+            Result of the insertion operation
+        """
+        try:
+            logger.info(f"Inserting new medication: {medication_data.get('Name', 'Unknown')}")
+
+            # SQL query to insert medication
+            insert_query = """
+            INSERT INTO [registroclinico].[ItemsGtin] (
+                GtinCode, GtinCodeType, PharmacyType, ProductType, Name,
+                CommonDenomination, Concentration, Form, FormSimple, BrandName,
+                Country, Presentation, CodeRsList, Fractions, State, IsAiGenerated
+            ) VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s
+            )
+            """
+
+            # Prepare parameters
+            params = [
+                medication_data.get('GtinCode'),
+                medication_data.get('GtinCodeType'),
+                medication_data.get('PharmacyType'),
+                medication_data.get('ProductType'),
+                medication_data.get('Name'),
+                medication_data.get('CommonDenomination'),
+                medication_data.get('Concentration'),
+                medication_data.get('Form'),
+                medication_data.get('FormSimple'),
+                medication_data.get('BrandName'),
+                medication_data.get('Country'),
+                medication_data.get('Presentation'),
+                medication_data.get('CodeRsList'),
+                medication_data.get('Fractions'),
+                medication_data.get('State'),
+                medication_data.get('IsAiGenerated', True)
+            ]
+
+            # Execute the insertion
+            result = self.db.execute_query(insert_query, params)
+            
+            logger.info(f"Medication inserted successfully: {medication_data.get('Name')}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error inserting medication: {str(e)}")
+            raise
+
 
 async def check_gtin_in_database_v3(state: Dict[str, Any]) -> Dict[str, Any]:
     """
