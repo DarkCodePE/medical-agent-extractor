@@ -119,7 +119,8 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
     database_info = state.get("database_info")
     semantic_results = state.get("semantic_results", [])
     semantic_best_match = state.get("semantic_best_match")
-    enrichment_applied = state.get("enrichment_applied", False)
+    # NOTA: NO leemos enrichment_applied del estado anterior porque podría estar contaminado
+    # enrichment_applied = state.get("enrichment_applied", False)
     
     # Crear una COPIA para enriquecimiento (preservar original)
     import copy
@@ -293,8 +294,8 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
             "confidence": 1.0
         }
     
-    # Determinar si se aplicó enriquecimiento
-    enrichment_was_applied = (gtin_found and database_info) or (len(semantic_results) > 0 and enrichment_confidence > 0.7)
+    # Determinar si se aplicó enriquecimiento (FORZAR BOOLEANO)
+    enrichment_was_applied = bool((gtin_found and database_info is not None) or (len(semantic_results) > 0 and enrichment_confidence > 0.7))
     
     # Establecer estrategia de búsqueda utilizada
     if gtin_found and database_info:
