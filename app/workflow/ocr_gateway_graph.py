@@ -134,21 +134,47 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
     if gtin_found and database_info:
         logger.info("✅ Datos encontrados en BD GTIN - Enriqueciendo con información de base de datos")
         
+        # Mapeo de campos de BD a campos del modelo
+        db_field_mapping = {
+            'Name': 'medication_name',
+            'CommonDenomination': 'common_denomination',
+            'Concentration': 'concentration',
+            'Form': 'form',
+            'FormSimple': 'form_simple',
+            'BrandName': 'brand_name',
+            'Country': 'country',
+            'Presentation': 'presentation',
+            'ProductType': 'product_type',
+            'Fractions': 'fractions'
+        }
+        
         # Enriquecer campos desde la base de datos GTIN
-        for field_name, db_value in database_info.items():
-            if db_value and hasattr(enriched_medication, field_name):
-                original_value = getattr(enriched_medication, field_name)
-                if not original_value:  # Solo completar campos vacíos
-                    setattr(enriched_medication, field_name, db_value)
-                    enrichment_source_fields[field_name] = "database_gtin"
-                    logger.info(f"🏥 Enriquecido {field_name}: {db_value} (BD GTIN)")
+        for db_field, model_field in db_field_mapping.items():
+            db_value = database_info.get(db_field)
+            if db_value and hasattr(enriched_medication, model_field):
+                original_value = getattr(enriched_medication, model_field)
+                if not original_value or original_value.strip() == "":  # Solo completar campos vacíos
+                    setattr(enriched_medication, model_field, db_value)
+                    enrichment_source_fields[model_field] = "database_gtin"
+                    logger.info(f"🏥 Enriquecido {model_field}: {db_value} (BD GTIN)")
                 else:
-                    enrichment_source_fields[field_name] = "ocr_original"
+                    enrichment_source_fields[model_field] = "ocr_original"
+                    logger.info(f"✅ Mantenido {model_field}: {original_value} (OCR original)")
+            elif hasattr(enriched_medication, model_field):
+                original_value = getattr(enriched_medication, model_field)
+                if original_value:
+                    enrichment_source_fields[model_field] = "ocr_original"
+                    
+        # Marcar campos especiales como OCR original
+        for field in ['bar_code', 'lot_number', 'expiration_date']:
+            if hasattr(enriched_medication, field) and getattr(enriched_medication, field):
+                enrichment_source_fields[field] = "ocr_original"
                     
         final_data_source = "database_gtin"
         enrichment_confidence = 1.0  # Máxima confianza en datos de BD
         
         logger.info(f"Medicamento finalizado con datos de BD: {enriched_medication.medication_name}")
+        logger.info(f"🏥 Campos enriquecidos desde BD GTIN: {[f for f, s in enrichment_source_fields.items() if s == 'database_gtin']}")
         
     # CASO 2: NO se encontraron datos en BD GTIN, usar búsqueda semántica
     elif not gtin_found and semantic_results and semantic_best_match:
@@ -254,11 +280,42 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
     logger.info(f"🔍 Campos enriquecidos: {len([f for f, s in enrichment_source_fields.items() if s in ['database_gtin', 'semantic_search']])}")
     logger.info(f"🏁 Finalización completada - Fuente principal: {final_data_source}")
     
+    # Crear información de validación GTIN cuando se encontró
+    gtin_validation_info = None
+    if gtin_found and database_info:
+        gtin_validation_info = {
+            "gtin_code": enriched_medication.bar_code,
+            "found_in_database": True,
+            "database_name": database_info.get("Name", ""),
+            "database_id": database_info.get("Id"),
+            "validation_source": "database_gtin",
+            "validation_timestamp": enriched_medication.lot_number,  # Para rastrear el lote
+            "confidence": 1.0
+        }
+    
+    # Determinar si se aplicó enriquecimiento
+    enrichment_was_applied = (gtin_found and database_info) or (len(semantic_results) > 0 and enrichment_confidence > 0.7)
+    
+    # Establecer estrategia de búsqueda utilizada
+    if gtin_found and database_info:
+        search_strategy_used = "GTIN_DATABASE_LOOKUP"
+        search_confidence_used = 1.0
+    elif len(semantic_results) > 0 and semantic_best_match:
+        search_strategy_used = state.get("search_strategy", "SEMANTIC_SEARCH")
+        search_confidence_used = semantic_best_match.get('similarity_score', 0.0)
+    else:
+        search_strategy_used = "OCR_ONLY"
+        search_confidence_used = 0.0
+    
     return {
         "processed_medications": original_ocr_medication,  # Datos originales del OCR
         "processed_enrichment_medications": enriched_medication,  # Datos enriquecidos
         "final_data_source": final_data_source,
         "enrichment_confidence": enrichment_confidence,
+        "enrichment_applied": enrichment_was_applied,  # ⭐ CAMPO FALTANTE
+        "search_strategy": search_strategy_used,  # ⭐ CAMPO FALTANTE
+        "search_confidence": search_confidence_used,  # ⭐ CAMPO FALTANTE  
+        "gtin_validation": gtin_validation_info,  # ⭐ CAMPO FALTANTE
         "completeness_summary": completeness_summary,
         "completeness_percentage": completeness_percentage,
         "missing_critical_fields": missing_critical_fields,

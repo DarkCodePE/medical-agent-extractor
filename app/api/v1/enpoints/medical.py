@@ -78,15 +78,60 @@ class MedicationRegistrationRequest(BaseModel):
     pharmacy_type: Optional[str] = Field("M", description="Tipo de farmacia", example="M")
     code_rs_list: Optional[str] = Field(None, description="Código RS", example="EN04755")
     state: Optional[str] = Field("ACTIVO", description="Estado del medicamento", example="ACTIVO")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "medication_data": {
+                    "medication_name": "Bronpax",
+                    "common_denomination": "Ambroxol",
+                    "concentration": "7.5 mg/mL",
+                    "form": "Solución oral",
+                    "form_simple": "Gotas",
+                    "brand_name": "FARMINDUSTRIA",
+                    "country": "PERÚ",
+                    "presentation": "20mL",
+                    "product_type": "PRODUCTO FARMACEUTICO",
+                    "fractions": "1",
+                    "gtin_code": None
+                },
+                "gtin_code": "7750304964586",
+                "enrichment_source": "semantic_search",
+                "enrichment_confidence": 0.87,
+                "user_approved": True,
+                "pharmacy_type": "M",
+                "state": "ACTIVO"
+            }
+        }
 
 
 class MedicationRegistrationResponse(BaseModel):
     """Respuesta del registro de medicamento"""
     status: str = Field(description="Estado de la operación", example="success")
-    message: str = Field(description="Mensaje descriptivo", example="Medicamento registrado exitosamente")
+    message: str = Field(description="Mensaje descriptivo", example="Medicamento registrado exitosamente como generado por IA")
     medication_id: Optional[int] = Field(None, description="ID del medicamento en la base de datos", example=12345)
     gtin_code: str = Field(description="Código GTIN registrado", example="7750304964586")
     registered_at: str = Field(description="Timestamp del registro", example="2024-01-15T10:30:00Z")
+    is_ai_generated: bool = Field(True, description="Indica si fue generado por IA", example=True)
+    enrichment_metadata: Optional[Dict[str, Any]] = Field(None, description="Metadatos del proceso de enriquecimiento")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "message": "Medicamento 'Bronpax' registrado exitosamente como generado por IA",
+                "medication_id": 12345,
+                "gtin_code": "7750304964586",
+                "registered_at": "2024-01-15T10:30:00Z",
+                "is_ai_generated": True,
+                "enrichment_metadata": {
+                    "enrichment_source": "semantic_search",
+                    "enrichment_confidence": 0.87,
+                    "user_approved": True,
+                    "auto_vectorized": True
+                }
+            }
+        }
 
 
 class ErrorResponse(BaseModel):
@@ -105,7 +150,7 @@ class MedicationExtractionResponse(BaseModel):
     results: ProcessingResult = Field(description="Resultados del procesamiento")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "success",
                 "message": "Successfully processed 1 medication images",
@@ -305,10 +350,27 @@ async def extract_medication_info(
         if extracted_texts:
             result["ocr_extracted_text"] = "\n".join(extracted_texts)
         
+        # Filtrar solo los campos válidos para ProcessingResult
+        valid_fields = {
+            "ocr_extracted_text": result.get("ocr_extracted_text"),
+            "processed_medications": result.get("processed_medications"),
+            "processed_enrichment_medications": result.get("processed_enrichment_medications"),
+            "semantic_results": result.get("semantic_results"),
+            "semantic_best_match": result.get("semantic_best_match"),
+            "enrichment_applied": result.get("enrichment_applied", False),
+            "search_strategy": result.get("search_strategy"),
+            "search_confidence": result.get("search_confidence", 0.0),
+            "confidence_threshold_used": result.get("confidence_threshold_used", 0.0),
+            "search_stats": result.get("search_stats"),
+            "gtin_validation": result.get("gtin_validation"),
+            "enrichment_source_fields": result.get("enrichment_source_fields"),
+            "ocr_vs_enriched_comparison": result.get("ocr_vs_enriched_comparison")
+        }
+        
         return MedicationExtractionResponse(
             status="success",
             message=f"Successfully processed {len(files)} medication images",
-            results=ProcessingResult(**result)
+            results=ProcessingResult(**valid_fields)
         )
 
     except Exception as e:
@@ -339,23 +401,42 @@ async def extract_medication_info(
 Este endpoint registra directamente un medicamento enriquecido en la base de datos GTIN, 
 preparando automáticamente los datos y marcándolo como generado por IA.
 
-### 🔍 **Flujo Simplificado:**
-1. **Recibe datos**: Acepta directamente `MedicationData` del endpoint `/extract`
-2. **Preparación automática**: Mapea y valida los campos requeridos
-3. **Registro completo**: Inserta en BD con flag `IsAiGenerated = true`
-4. **Vectorización automática**: Actualiza Qdrant para futuras búsquedas
+### 🔍 **Flujo Completo:**
+1. **Recibe datos**: `MedicationData` (del endpoint `/extract`) + metadatos de enriquecimiento
+2. **Validación automática**: Verifica GTIN único, campos obligatorios y aprobación del usuario
+3. **Preparación inteligente**: Determina tipo GTIN automáticamente y mapea campos
+4. **Registro en BD**: Inserta con flag `IsAiGenerated = true` para auditoría
+5. **Vectorización automática**: Actualiza Qdrant para mejorar futuras búsquedas semánticas
 
-### 📊 **Validaciones Automáticas:**
-- Determina tipo de GTIN por longitud del código
-- Verifica que el GTIN no exista previamente
-- Valida campos obligatorios automáticamente
-- Marca como generado por IA para auditoría
+### 📊 **Validaciones y Procesamiento Automático:**
+- ✅ Determina tipo de GTIN por longitud del código (GTIN_8/12/13/14)
+- ✅ Verifica que el GTIN no exista previamente en la base de datos
+- ✅ Valida campos obligatorios: `medication_name`, `common_denomination`, `gtin_code`
+- ✅ Requiere aprobación explícita del usuario (`user_approved: true`)
+- ✅ Marca automáticamente como generado por IA para auditoría
 
-### 🛡️ **Seguridad y Trazabilidad:**
-- Solo acepta medicamentos aprobados por usuario
-- Mantiene metadatos de enriquecimiento completos
-- Registra confianza del algoritmo de enriquecimiento
-- Flag `IsAiGenerated` para diferencial de registros manuales
+### 🎯 **Campos Automáticos/Opcionales:**
+- **Automáticos**: `gtin_code_type`, `IsAiGenerated = true`
+- **Con defaults**: `pharmacy_type = "M"`, `state = "ACTIVO"`, `fractions = "1"`
+- **Opcionales**: `code_rs_list`, campos vacíos se almacenan como cadena vacía
+
+### 🛡️ **Seguridad y Trazabilidad Completa:**
+- 🔐 Solo acepta medicamentos con `user_approved = true`
+- 📊 Mantiene metadatos completos de enriquecimiento y confianza
+- 🏷️ Flag `IsAiGenerated` diferencia registros automáticos vs manuales
+- 📈 Actualización automática de vectores semánticos para mejorar el sistema
+- ⚡ Respuesta incluye confirmación de vectorización y metadatos de auditoría
+
+### 📋 **Estructura de Entrada:**
+```json
+{
+  "medication_data": { /* Datos del medicamento del endpoint /extract */ },
+  "gtin_code": "código GTIN extraído o validado",
+  "enrichment_source": "semantic_search | ocr_extraction | database_gtin",
+  "enrichment_confidence": 0.87,
+  "user_approved": true
+}
+```
              """)
 async def register_enriched_medication(
     request: MedicationRegistrationRequest
@@ -466,7 +547,16 @@ async def register_enriched_medication(
             message=f"Medicamento '{med_data.medication_name}' registrado exitosamente como generado por IA",
             medication_id=medication_id,
             gtin_code=gtin_code_clean,
-            registered_at=datetime.utcnow().isoformat() + "Z"
+            registered_at=datetime.utcnow().isoformat() + "Z",
+            is_ai_generated=True,
+            enrichment_metadata={
+                "enrichment_source": request.enrichment_source,
+                "enrichment_confidence": request.enrichment_confidence,
+                "user_approved": request.user_approved,
+                "auto_vectorized": vectorization_success if 'vectorization_success' in locals() else False,
+                "pharmacy_type": request.pharmacy_type,
+                "gtin_code_type": gtin_type
+            }
         )
         
     except HTTPException:
@@ -480,5 +570,74 @@ async def register_enriched_medication(
             status_code=500, 
             detail=f"Error interno al registrar medicamento: {str(e)}"
         )
+
+
+# ================================
+# EJEMPLOS DE USO PARA TESTING
+# ================================
+
+"""
+## 🔧 Ejemplos de cURL para testing:
+
+### 1. Medicamento completo con alta confianza (semantic_search):
+curl -X POST "http://localhost:9088/api/medication/register-enriched" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "medication_data": {
+      "medication_name": "Bronpax",
+      "common_denomination": "Ambroxol",
+      "concentration": "7.5 mg/mL",
+      "form": "Solución oral",
+      "form_simple": "Gotas",
+      "brand_name": "FARMINDUSTRIA",
+      "country": "PERÚ",
+      "presentation": "20mL",
+      "product_type": "PRODUCTO FARMACEUTICO",
+      "fractions": "1"
+    },
+    "gtin_code": "7750304964586",
+    "enrichment_source": "semantic_search",
+    "enrichment_confidence": 0.87,
+    "user_approved": true
+  }'
+
+### 2. Medicamento con datos mínimos (OCR extraction):
+curl -X POST "http://localhost:9088/api/medication/register-enriched" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "medication_data": {
+      "medication_name": "Paracetamol 500mg",
+      "common_denomination": "Paracetamol",
+      "concentration": "500 mg",
+      "form_simple": "Tabletas"
+    },
+    "gtin_code": "1234567890123",
+    "enrichment_source": "ocr_extraction",
+    "enrichment_confidence": 0.65,
+    "user_approved": true
+  }'
+
+### 3. Medicamento enriquecido desde BD GTIN existente:
+curl -X POST "http://localhost:9088/api/medication/register-enriched" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "medication_data": {
+      "medication_name": "Ibuprofeno",
+      "common_denomination": "Ibuprofeno",
+      "concentration": "400 mg",
+      "form": "Tableta recubierta",
+      "form_simple": "Tabletas",
+      "brand_name": "LABORATORIO XYZ",
+      "country": "COLOMBIA",
+      "presentation": "10 tabletas",
+      "product_type": "PRODUCTO FARMACEUTICO",
+      "fractions": "1"
+    },
+    "gtin_code": "9876543210987",
+    "enrichment_source": "database_gtin",
+    "enrichment_confidence": 0.95,
+    "user_approved": true
+  }'
+"""
 
 
