@@ -1,0 +1,692 @@
+openapi: 3.0.3
+info:
+  title: Medical Agent Extractor API - Extracción y Registro de Medicamentos
+  description: |
+    ## 🏥 API Completa para Extracción y Registro de Medicamentos con IA
+    
+    Esta API proporciona un flujo completo para extraer información de medicamentos desde imágenes usando IA y registrarlos en la base de datos GTIN.
+    
+    ### 🔍 **Características Principales:**
+    - 🔍 **Extracción OCR + IA**: Procesamiento de imágenes con Mistral/Gemini
+    - 🧠 **Enriquecimiento semántico**: Búsqueda vectorial en Qdrant
+    - 📝 **Registro automático**: Inserción en BD con flag `IsAiGenerated = true`
+    - 🔄 **Vectorización automática**: Actualización de base vectorial
+    - 📊 **Trazabilidad completa**: Metadatos de auditoría del proceso
+    
+    ### 🔄 **Flujo de Integración Completo:**
+    ```
+    Imagen → /extract → datos enriquecidos → /register-enriched → BD + Vectorización
+    ```
+    
+    ### 🛡️ **Seguridad y Robustez:**
+    - OCR con múltiples proveedores (fallback automático)
+    - Validación de datos y unicidad de GTIN
+    - Requiere aprobación explícita del usuario
+    - Metadatos completos de auditoría y confianza
+    
+  version: 1.0.0
+  contact:
+    name: Medical Agent Extractor Team
+    email: dev@medical-agent.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:9088
+    description: Servidor de desarrollo local
+  - url: https://api.medical-agent.com
+    description: Servidor de producción
+
+paths:
+  /api/medication/extract:
+    post:
+      tags:
+        - Medication Extraction
+      summary: Extraer información de medicamentos desde imágenes
+      description: |
+        ## 🔍 Extracción Inteligente de Medicamentos con IA
+        
+        Este endpoint utiliza **OCR + IA** para extraer y enriquecer información de medicamentos desde imágenes.
+        
+        ### 🔄 **Proceso Completo:**
+        1. **OCR Avanzado**: Extrae texto de imágenes usando Mistral o Gemini
+        2. **Estructuración IA**: Convierte texto en datos estructurados
+        3. **Búsqueda Semántica**: Enriquece con base de datos vectorial (Qdrant)
+        4. **Validación GTIN**: Verifica códigos de barras cuando están disponibles
+        
+        ### 🎯 **Estrategias de Búsqueda Adaptativas:**
+        - **PRECISE_FILTERING**: Con múltiples filtros (umbral 60%)
+        - **MODERATE_FILTERING**: Con un filtro (umbral 65%) 
+        - **SEMANTIC_ONLY**: Solo búsqueda semántica (umbral 70%)
+        
+        ### 📊 **Campos Extraídos:**
+        - Nombre comercial y principio activo
+        - Concentración y forma farmacéutica
+        - Marca, país, presentación
+        - Código GTIN (si disponible)
+        
+        ### 🛡️ **Robustez:**
+        - Fallback automático si fallan filtros
+        - Manejo de OCR incompleto
+        - Múltiples proveedores OCR disponibles
+        
+      operationId: extractMedicationInfo
+      parameters:
+        - name: provider
+          in: query
+          description: Proveedor OCR a utilizar
+          required: false
+          schema:
+            type: string
+            enum: ["mistral", "gemini"]
+            example: "gemini"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Imágenes de medicamentos (PNG, JPG, JPEG, WEBP)
+            examples:
+              single_image:
+                summary: Una imagen de medicamento
+                description: Ejemplo con una sola imagen
+              multiple_images:
+                summary: Múltiples imágenes
+                description: Ejemplo con varias imágenes del mismo medicamento
+                  
+      responses:
+        '200':
+          description: Extracción exitosa de información de medicamento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicationExtractionResponse'
+              examples:
+                extraction_success:
+                  summary: Extracción exitosa con enriquecimiento
+                  value:
+                    status: "success"
+                    message: "Successfully processed 1 medication images"
+                    results:
+                      ocr_extracted_text: "Bronpax Ambroxol 7.5 mg/mL Solución oral Frasco gotero x 30 mL"
+                      processed_medications:
+                        medication_name: "Bronpax"
+                        common_denomination: "Ambroxol"
+                        concentration: "7.5 mg/mL"
+                        form: null
+                        form_simple: "Gotas"
+                        brand_name: null
+                        country: null
+                        presentation: "20mL"
+                        product_type: null
+                        fractions: null
+                        gtin_code: null
+                      processed_enrichment_medications:
+                        medication_name: "Bronpax"
+                        common_denomination: "Ambroxol"
+                        concentration: "7.5 mg/mL"
+                        form: "Solución oral"
+                        form_simple: "Gotas"
+                        brand_name: "FARMINDUSTRIA"
+                        country: "PERÚ"
+                        presentation: "20mL"
+                        product_type: "PRODUCTO FARMACEUTICO"
+                        fractions: "1"
+                        gtin_code: null
+                      semantic_results:
+                        - medication_name: "Bronpax"
+                          common_denomination: "AMBROXOL"
+                          concentration: "7.5 mg/mL"
+                          similarity_score: 0.87
+                          search_method: "semantic_filtered_2"
+                      semantic_best_match:
+                        medication_name: "Bronpax"
+                        common_denomination: "AMBROXOL"
+                        similarity_score: 0.87
+                      enrichment_applied: true
+                      search_strategy: "PRECISE_FILTERING"
+                      search_confidence: 0.87
+                      confidence_threshold_used: 0.60
+                      
+        '400':
+          description: Error en los datos de entrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_files:
+                  summary: No se proporcionaron archivos
+                  value:
+                    detail: "No files provided"
+                invalid_file_type:
+                  summary: Tipo de archivo inválido
+                  value:
+                    detail: "Invalid file type: application/pdf. Only image files are supported."
+                    
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                processing_error:
+                  summary: Error en el procesamiento
+                  value:
+                    detail: "Error processing medication images: OCR service unavailable"
+
+  /api/medication/register-enriched:
+    post:
+      tags:
+        - Medication Registration
+      summary: Registrar medicamento enriquecido en base de datos GTIN
+      description: |
+        ## 📝 Registro de Medicamento Enriquecido con IA
+        
+        Este endpoint registra directamente un medicamento enriquecido en la base de datos GTIN, 
+        preparando automáticamente los datos y marcándolo como generado por IA.
+        
+        ### 🔍 **Flujo Completo:**
+        1. **Recibe datos**: `MedicationData` (del endpoint `/extract`) + metadatos de enriquecimiento
+        2. **Validación automática**: Verifica GTIN único, campos obligatorios y aprobación del usuario
+        3. **Preparación inteligente**: Determina tipo GTIN automáticamente y mapea campos
+        4. **Registro en BD**: Inserta con flag `IsAiGenerated = true` para auditoría
+        5. **Vectorización automática**: Actualiza Qdrant para mejorar futuras búsquedas semánticas
+        
+        ### 📊 **Validaciones y Procesamiento Automático:**
+        - ✅ Determina tipo de GTIN por longitud del código (GTIN_8/12/13/14)
+        - ✅ Verifica que el GTIN no exista previamente en la base de datos
+        - ✅ Valida campos obligatorios: `medication_name`, `common_denomination`, `gtin_code`
+        - ✅ Requiere aprobación explícita del usuario (`user_approved: true`)
+        - ✅ Marca automáticamente como generado por IA para auditoría
+        
+        ### 🎯 **Campos Automáticos/Opcionales:**
+        - **Automáticos**: `gtin_code_type`, `IsAiGenerated = true`
+        - **Con defaults**: `pharmacy_type = "M"`, `state = "ACTIVO"`, `fractions = "1"`
+        - **Opcionales**: `code_rs_list`, campos vacíos se almacenan como cadena vacía
+        
+      operationId: registerEnrichedMedication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationRegistrationRequest'
+            examples:
+              semantic_search_example:
+                summary: Medicamento enriquecido por búsqueda semántica
+                description: Ejemplo de medicamento enriquecido con alta confianza usando búsqueda semántica
+                value:
+                  medication_data:
+                    medication_name: "Bronpax"
+                    common_denomination: "Ambroxol"
+                    concentration: "7.5 mg/mL"
+                    form: "Solución oral"
+                    form_simple: "Gotas"
+                    brand_name: "FARMINDUSTRIA"
+                    country: "PERÚ"
+                    presentation: "20mL"
+                    product_type: "PRODUCTO FARMACEUTICO"
+                    fractions: "1"
+                    gtin_code: null
+                  gtin_code: "7750304964586"
+                  enrichment_source: "semantic_search"
+                  enrichment_confidence: 0.87
+                  user_approved: true
+                  
+              ocr_extraction_example:
+                summary: Medicamento con datos mínimos del OCR
+                description: Ejemplo de medicamento con datos básicos extraídos por OCR
+                value:
+                  medication_data:
+                    medication_name: "Paracetamol 500mg"
+                    common_denomination: "Paracetamol"
+                    concentration: "500 mg"
+                    form_simple: "Tabletas"
+                  gtin_code: "1234567890123"
+                  enrichment_source: "ocr_extraction"
+                  enrichment_confidence: 0.65
+                  user_approved: true
+                  
+              database_gtin_example:
+                summary: Medicamento enriquecido desde BD GTIN
+                description: Ejemplo de medicamento enriquecido usando datos existentes en la BD GTIN
+                value:
+                  medication_data:
+                    medication_name: "Ibuprofeno"
+                    common_denomination: "Ibuprofeno"
+                    concentration: "400 mg"
+                    form: "Tableta recubierta"
+                    form_simple: "Tabletas"
+                    brand_name: "LABORATORIO XYZ"
+                    country: "COLOMBIA"
+                    presentation: "10 tabletas"
+                    product_type: "PRODUCTO FARMACEUTICO"
+                    fractions: "1"
+                  gtin_code: "9876543210987"
+                  enrichment_source: "database_gtin"
+                  enrichment_confidence: 0.95
+                  user_approved: true
+                  
+      responses:
+        '200':
+          description: Medicamento registrado exitosamente en la base de datos GTIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicationRegistrationResponse'
+              examples:
+                success_response:
+                  summary: Registro exitoso con vectorización
+                  value:
+                    status: "success"
+                    message: "Medicamento 'Bronpax' registrado exitosamente como generado por IA"
+                    medication_id: 12345
+                    gtin_code: "7750304964586"
+                    registered_at: "2024-01-15T10:30:00Z"
+                    is_ai_generated: true
+                    enrichment_metadata:
+                      enrichment_source: "semantic_search"
+                      enrichment_confidence: 0.87
+                      user_approved: true
+                      auto_vectorized: true
+                      pharmacy_type: "M"
+                      gtin_code_type: "GTIN_13"
+                      
+        '400':
+          description: Datos de entrada inválidos o medicamento ya existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                user_not_approved:
+                  summary: Usuario no aprobó los datos
+                  value:
+                    detail: "No se puede registrar medicamento sin aprobación del usuario"
+                    
+                gtin_already_exists:
+                  summary: GTIN ya existe en la base de datos
+                  value:
+                    detail: "El medicamento con GTIN 7750304964586 ya existe en la base de datos"
+                    
+                missing_required_field:
+                  summary: Campo requerido faltante
+                  value:
+                    detail: "medication_name es obligatorio"
+                    
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                database_error:
+                  summary: Error de base de datos
+                  value:
+                    detail: "Error interno al registrar medicamento: Database connection failed"
+                    
+                vectorization_error:
+                  summary: Error de vectorización (medicamento registrado)
+                  value:
+                    detail: "Medicamento registrado pero falló la vectorización automática"
+
+components:
+  schemas:
+    ProcessingResult:
+      type: object
+      description: Resultado del procesamiento de una imagen
+      properties:
+        ocr_extracted_text:
+          type: string
+          nullable: true
+          description: Texto extraído por OCR
+          example: "Bronpax Ambroxol 7.5 mg/mL Solución oral Frasco gotero x 30 mL"
+        processed_medications:
+          $ref: '#/components/schemas/MedicationData'
+          description: Datos extraídos solo del OCR (originales)
+        processed_enrichment_medications:
+          $ref: '#/components/schemas/MedicationData'
+          description: Datos finales enriquecidos con BD/búsqueda semántica
+        semantic_results:
+          type: array
+          nullable: true
+          description: Resultados de búsqueda semántica
+          items:
+            type: object
+            properties:
+              medication_name:
+                type: string
+              common_denomination:
+                type: string
+              concentration:
+                type: string
+              similarity_score:
+                type: number
+                format: float
+              search_method:
+                type: string
+        semantic_best_match:
+          type: object
+          nullable: true
+          description: Mejor coincidencia semántica
+          properties:
+            medication_name:
+              type: string
+            common_denomination:
+              type: string
+            similarity_score:
+              type: number
+              format: float
+        enrichment_applied:
+          type: boolean
+          description: Si se aplicó enriquecimiento de datos
+          example: true
+        search_strategy:
+          type: string
+          nullable: true
+          description: Estrategia de búsqueda utilizada
+          enum: ["PRECISE_FILTERING", "MODERATE_FILTERING", "SEMANTIC_ONLY"]
+          example: "PRECISE_FILTERING"
+        search_confidence:
+          type: number
+          format: float
+          description: Confianza de la búsqueda
+          example: 0.87
+        confidence_threshold_used:
+          type: number
+          format: float
+          description: Umbral de confianza utilizado
+          example: 0.60
+          
+    MedicationExtractionResponse:
+      type: object
+      required:
+        - status
+        - message
+        - results
+      properties:
+        status:
+          type: string
+          description: Estado de la operación
+          enum: ["success", "error"]
+          example: "success"
+        message:
+          type: string
+          description: Mensaje descriptivo
+          example: "Successfully processed 1 medication images"
+        results:
+          $ref: '#/components/schemas/ProcessingResult'
+          description: Resultados del procesamiento
+
+    MedicationData:
+      type: object
+      description: Datos extraídos y/o enriquecidos del medicamento
+      properties:
+        medication_name:
+          type: string
+          nullable: true
+          description: Nombre comercial del medicamento
+          example: "Bronpax"
+          
+        common_denomination:
+          type: string
+          nullable: true
+          description: Denominación común o principio activo
+          example: "Ambroxol"
+          
+        concentration:
+          type: string
+          nullable: true
+          description: Concentración del medicamento
+          example: "7.5 mg/mL"
+          
+        form:
+          type: string
+          nullable: true
+          description: Forma farmacéutica completa
+          example: "Solución oral"
+          
+        form_simple:
+          type: string
+          nullable: true
+          description: Forma farmacéutica simplificada
+          example: "Gotas"
+          
+        brand_name:
+          type: string
+          nullable: true
+          description: Marca o laboratorio
+          example: "FARMINDUSTRIA"
+          
+        country:
+          type: string
+          nullable: true
+          description: País de origen
+          example: "PERÚ"
+          
+        presentation:
+          type: string
+          nullable: true
+          description: Presentación del producto
+          example: "20mL"
+          
+        product_type:
+          type: string
+          nullable: true
+          description: Tipo de producto
+          example: "PRODUCTO FARMACEUTICO"
+          
+        fractions:
+          type: string
+          nullable: true
+          description: Número de fracciones
+          example: "1"
+          
+        gtin_code:
+          type: string
+          nullable: true
+          description: Código GTIN si se encuentra en los datos originales
+          example: null
+          
+    MedicationRegistrationRequest:
+      type: object
+      required:
+        - medication_data
+        - gtin_code
+        - enrichment_source
+        - enrichment_confidence
+        - user_approved
+      properties:
+        medication_data:
+          $ref: '#/components/schemas/MedicationData'
+          description: Datos del medicamento extraído y enriquecido
+          
+        gtin_code:
+          type: string
+          description: Código GTIN del medicamento
+          pattern: '^[0-9]{8,14}$'
+          example: "7750304964586"
+          
+        enrichment_source:
+          type: string
+          description: Fuente del enriquecimiento
+          enum: 
+            - "semantic_search"
+            - "ocr_extraction"
+            - "database_gtin"
+            - "manual_input"
+          example: "semantic_search"
+          
+        enrichment_confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Confianza del enriquecimiento (0.0 - 1.0)
+          example: 0.87
+          
+        user_approved:
+          type: boolean
+          description: Si fue aprobado por el usuario
+          example: true
+          
+        gtin_code_type:
+          type: string
+          nullable: true
+          description: Tipo de código GTIN (se determina automáticamente si no se proporciona)
+          enum:
+            - "GTIN_8"
+            - "GTIN_12"
+            - "GTIN_13"
+            - "GTIN_14"
+          example: "GTIN_13"
+          
+        pharmacy_type:
+          type: string
+          nullable: true
+          description: Tipo de farmacia
+          default: "M"
+          example: "M"
+          
+        code_rs_list:
+          type: string
+          nullable: true
+          description: Código RS
+          example: "EN04755"
+          
+        state:
+          type: string
+          nullable: true
+          description: Estado del medicamento
+          default: "ACTIVO"
+          enum:
+            - "ACTIVO"
+            - "INACTIVO"
+            - "PENDIENTE"
+          example: "ACTIVO"
+          
+    MedicationRegistrationResponse:
+      type: object
+      required:
+        - status
+        - message
+        - gtin_code
+        - registered_at
+        - is_ai_generated
+      properties:
+        status:
+          type: string
+          description: Estado de la operación
+          enum: ["success", "error"]
+          example: "success"
+          
+        message:
+          type: string
+          description: Mensaje descriptivo
+          example: "Medicamento 'Bronpax' registrado exitosamente como generado por IA"
+          
+        medication_id:
+          type: integer
+          nullable: true
+          description: ID del medicamento en la base de datos
+          example: 12345
+          
+        gtin_code:
+          type: string
+          description: Código GTIN registrado
+          example: "7750304964586"
+          
+        registered_at:
+          type: string
+          format: date-time
+          description: Timestamp del registro en formato ISO 8601
+          example: "2024-01-15T10:30:00Z"
+          
+        is_ai_generated:
+          type: boolean
+          description: Indica si fue generado por IA
+          example: true
+          
+        enrichment_metadata:
+          type: object
+          nullable: true
+          description: Metadatos del proceso de enriquecimiento
+          properties:
+            enrichment_source:
+              type: string
+              example: "semantic_search"
+            enrichment_confidence:
+              type: number
+              format: float
+              example: 0.87
+            user_approved:
+              type: boolean
+              example: true
+            auto_vectorized:
+              type: boolean
+              description: Si se vectorizó automáticamente en Qdrant
+              example: true
+            pharmacy_type:
+              type: string
+              example: "M"
+            gtin_code_type:
+              type: string
+              example: "GTIN_13"
+              
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Descripción del error
+          example: "Error processing medication: Invalid input data"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token para autenticación (si aplica en el futuro)
+
+security:
+  - {} # Sin autenticación por ahora
+
+tags:
+  - name: Medication Extraction
+    description: |
+      ## 🔍 Extracción de Medicamentos con IA
+      
+      Endpoints para extraer y enriquecer información de medicamentos desde imágenes usando OCR y algoritmos de IA.
+      
+      ### 🎯 **Características:**
+      - OCR con múltiples proveedores (Mistral/Gemini)
+      - Enriquecimiento semántico automático
+      - Búsqueda vectorial en Qdrant
+      - Estrategias adaptativas de búsqueda
+      
+  - name: Medication Registration
+    description: |
+      ## 💊 Registro de Medicamentos Enriquecidos
+      
+      Endpoints para registrar medicamentos que han sido procesados y enriquecidos por algoritmos de IA.
+      
+      ### 🎯 **Características:**
+      - Validación automática de datos
+      - Marcado con flag de IA
+      - Vectorización automática
+      - Trazabilidad completa 
