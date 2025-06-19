@@ -1,5 +1,5 @@
 # Utilizar la imagen base de Python
-FROM python:3.10-slim
+FROM python:3.10
 
 # Instala la dependencia libGL necesaria para OpenCV
 RUN apt-get update && apt-get install -y libgl1-mesa-glx
