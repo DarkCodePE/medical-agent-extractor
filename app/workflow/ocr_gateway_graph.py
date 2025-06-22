@@ -4,10 +4,11 @@ from typing import Dict, Any, Literal
 from langgraph.graph import StateGraph
 from langgraph.constants import START, END
 import logging
+from datetime import datetime
 
 from langgraph.types import Send
 
-from app.agent.medication_processor import MedicationProcessor
+from app.agent.medication_processor import MedicationProcessor, format_expiration_date
 from app.agent.medication_search_workflow_optimized import search_medications_semantic_optimized
 from app.agent.ocr_gateway_extractor import OCRGatewayExtractor
 from app.tools.check_gtin_in_database import check_gtin_in_database_v3, GtinService
@@ -150,26 +151,44 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
         }
         
         # Enriquecer campos desde la base de datos GTIN
+        # ESTRATEGIA: Usar preferentemente datos de BD, mantener solo campos especiales del OCR
         for db_field, model_field in db_field_mapping.items():
             db_value = database_info.get(db_field)
+            original_value = getattr(enriched_medication, model_field, None)
+            
             if db_value and hasattr(enriched_medication, model_field):
-                original_value = getattr(enriched_medication, model_field)
-                if not original_value or original_value.strip() == "":  # Solo completar campos vacíos
-                    setattr(enriched_medication, model_field, db_value)
-                    enrichment_source_fields[model_field] = "database_gtin"
-                    logger.info(f"🏥 Enriquecido {model_field}: {db_value} (BD GTIN)")
-                else:
-                    enrichment_source_fields[model_field] = "ocr_original"
-                    logger.info(f"✅ Mantenido {model_field}: {original_value} (OCR original)")
-            elif hasattr(enriched_medication, model_field):
-                original_value = getattr(enriched_medication, model_field)
-                if original_value:
-                    enrichment_source_fields[model_field] = "ocr_original"
+                # Usar dato de BD siempre que esté disponible (es más confiable)
+                setattr(enriched_medication, model_field, db_value)
+                enrichment_source_fields[model_field] = "database_gtin"
+                logger.info(f"🏥 Enriquecido {model_field}: '{original_value}' → '{db_value}' (BD GTIN)")
+            elif hasattr(enriched_medication, model_field) and original_value:
+                # Mantener dato original si no hay dato en BD
+                enrichment_source_fields[model_field] = "ocr_original"
+                logger.info(f"✅ Mantenido {model_field}: '{original_value}' (OCR original, no dato en BD)")
+            else:
+                # Campo sin datos en ninguna fuente
+                enrichment_source_fields[model_field] = "unknown"
                     
-        # Marcar campos especiales como OCR original
+        # Asignar database_id cuando se encuentra en BD GTIN
+        if database_info and database_info.get("Id"):
+            enriched_medication.database_id = database_info.get("Id")
+            enrichment_source_fields["database_id"] = "database_gtin"
+            logger.info(f"🔗 Asignado database_id: {database_info.get('Id')} (BD GTIN)")
+        
+        # Marcar campos especiales como OCR original y formatear fecha si existe
         for field in ['bar_code', 'lot_number', 'expiration_date']:
             if hasattr(enriched_medication, field) and getattr(enriched_medication, field):
                 enrichment_source_fields[field] = "ocr_original"
+                
+                # Formatear expiration_date si existe
+                if field == 'expiration_date':
+                    original_date = getattr(enriched_medication, field)
+                    formatted_date = format_expiration_date(original_date)
+                    if formatted_date:
+                        setattr(enriched_medication, field, formatted_date)
+                        logger.info(f"📅 Fecha de expiración formateada: '{original_date}' → '{formatted_date}'")
+                    else:
+                        logger.warning(f"⚠️ No se pudo formatear fecha de expiración: '{original_date}'")
                     
         final_data_source = "database_gtin"
         enrichment_confidence = 1.0  # Máxima confianza en datos de BD
@@ -224,6 +243,21 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
             enrichment_confidence = 0.0
             logger.info("❌ Búsqueda semántica con baja confianza - Manteniendo solo datos de OCR")
             
+        # En búsqueda semántica NO hay database_id
+        enriched_medication.database_id = None
+        enrichment_source_fields["database_id"] = "not_applicable"
+        logger.info("🔗 database_id = null (búsqueda semántica/OCR solo)")
+        
+        # Formatear fecha de expiración si existe (búsqueda semántica)
+        if hasattr(enriched_medication, 'expiration_date') and enriched_medication.expiration_date:
+            original_date = enriched_medication.expiration_date
+            formatted_date = format_expiration_date(original_date)
+            if formatted_date:
+                enriched_medication.expiration_date = formatted_date
+                logger.info(f"📅 Fecha de expiración formateada (semántica): '{original_date}' → '{formatted_date}'")
+            else:
+                logger.warning(f"⚠️ No se pudo formatear fecha de expiración (semántica): '{original_date}'")
+            
     # CASO 3: No se encontraron datos en ninguna fuente
     else:
         logger.warning("⚠️ No se encontraron datos complementarios - Solo datos extraídos por OCR")
@@ -235,6 +269,21 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
                           'form_simple', 'brand_name', 'country', 'presentation', 'product_type', 'fractions']:
             if getattr(enriched_medication, field_name, None):
                 enrichment_source_fields[field_name] = "ocr_original"
+                
+        # Sin búsqueda en BD, no hay database_id
+        enriched_medication.database_id = None
+        enrichment_source_fields["database_id"] = "not_applicable"
+        logger.info("🔗 database_id = null (solo OCR, sin búsqueda en BD)")
+        
+        # Formatear fecha de expiración si existe (solo OCR)
+        if hasattr(enriched_medication, 'expiration_date') and enriched_medication.expiration_date:
+            original_date = enriched_medication.expiration_date
+            formatted_date = format_expiration_date(original_date)
+            if formatted_date:
+                enriched_medication.expiration_date = formatted_date
+                logger.info(f"📅 Fecha de expiración formateada (OCR): '{original_date}' → '{formatted_date}'")
+            else:
+                logger.warning(f"⚠️ No se pudo formatear fecha de expiración (OCR): '{original_date}'")
     
     # Validar campos críticos (basado en la versión enriquecida)
     missing_critical_fields = []
@@ -257,7 +306,8 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
         "lot_number": bool(enriched_medication.lot_number),
         "expiration_date": bool(enriched_medication.expiration_date),
         "presentation": bool(enriched_medication.presentation),
-        "country": bool(enriched_medication.country)
+        "country": bool(enriched_medication.country),
+        "database_id": bool(enriched_medication.database_id)
     }
     
     completed_fields = sum(completeness_summary.values())
@@ -289,8 +339,14 @@ def finalize_data_enrichment(state: MedicationExtractionState) -> Dict[str, Any]
             "found_in_database": True,
             "database_name": database_info.get("Name", ""),
             "database_id": database_info.get("Id"),
+            "database_common_denomination": database_info.get("CommonDenomination", ""),
+            "database_brand_name": database_info.get("BrandName", ""),
+            "database_concentration": database_info.get("Concentration", ""),
+            "database_form": database_info.get("Form", ""),
+            "database_country": database_info.get("Country", ""),
             "validation_source": "database_gtin",
-            "validation_timestamp": enriched_medication.lot_number,  # Para rastrear el lote
+            "validation_timestamp": datetime.utcnow().isoformat(),
+            "ocr_lot_number": enriched_medication.lot_number,  # Lote del OCR
             "confidence": 1.0
         }
     

@@ -440,42 +440,11 @@ async def check_gtin_in_database_v3(state: Dict[str, Any]) -> Dict[str, Any]:
             if db_result:
                 product_info_from_db = db_result  # Guardamos la info cruda para el estado
                 gtin_found_for_this_item = True
-                logger.info(f"GTIN {clean_code} found in DB: {db_result.get('Name')}")
-
-                # --- ENRICHMENT LOGIC ---
-                if db_result.get("Name"):
-                    processed_medication.medication_name = db_result["Name"]
-                if db_result.get("CommonDenomination"):
-                    processed_medication.common_denomination = db_result["CommonDenomination"]
-                if db_result.get("Concentration"):
-                    processed_medication.concentration = db_result["Concentration"]
-                if db_result.get("Form"):
-                    processed_medication.form = db_result["Form"]
-                if db_result.get("FormSimple"):
-                    processed_medication.form_simple = db_result["FormSimple"]
-                if db_result.get("BrandName"):
-                    processed_medication.brand_name = db_result["BrandName"]
-                if db_result.get("Country"):
-                    processed_medication.country = db_result["Country"]
-                if db_result.get("Presentation"):
-                    processed_medication.presentation = db_result["Presentation"]
-                if db_result.get("Fractions") is not None:  # Puede ser numérico o string
-                    processed_medication.fractions = str(db_result["Fractions"])
-
-                # Campos que vienen principalmente de la BD
-                if db_result.get("ProductType"):
-                    processed_medication.product_type = db_result["ProductType"]
-                # if db_result.get("CodeRsList"):
-                #     processed_medication.code_rs_list = db_result["CodeRsList"]
-                # if db_result.get("State"):  # 'State' de la tabla ItemsGtin
-                #     processed_medication.product_status_in_db = db_result["State"]
-
-                # Los campos lot_number y expiration_date se mantienen del OCR
-                # a menos que tengas una lógica específica para actualizarlos desde la BD (raro).
-
-                logger.info(f"Enriched processed_medications: {processed_medication.model_dump_json(indent=2)}")
+                logger.info(f"✅ GTIN {clean_code} found in DB: {db_result.get('Name')} (ID: {db_result.get('Id')})")
+                logger.info(f"📋 BD Data: Name='{db_result.get('Name')}', Brand='{db_result.get('BrandName')}', Country='{db_result.get('Country')}'")
+                # NO hacemos enriquecimiento aquí - se hace en finalize_data_enrichment
             else:
-                logger.info(f"GTIN {clean_code} NOT found in DB.")
+                logger.info(f"❌ GTIN {clean_code} NOT found in DB.")
         else:
             logger.warning(f"Barcode '{processed_medication.bar_code}' is not valid for DB query.")
     else:
