@@ -501,6 +501,18 @@ components:
           description: Código GTIN si se encuentra en los datos originales
           example: null
           
+        lot_number:
+          type: string
+          nullable: true
+          description: Número de lote del medicamento
+          example: "LT240815"
+          
+        expiration_date:
+          type: string
+          nullable: true
+          description: Fecha de vencimiento del medicamento
+          example: "12/2025"
+          
     MedicationRegistrationRequest:
       type: object
       required:

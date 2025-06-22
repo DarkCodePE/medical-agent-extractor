@@ -33,6 +33,8 @@ class MedicationData(BaseModel):
     product_type: Optional[str] = Field(None, description="Tipo de producto", example="PRODUCTO FARMACEUTICO")
     fractions: Optional[str] = Field(None, description="Número de fracciones", example="1")
     gtin_code: Optional[str] = Field(None, description="Código GTIN si se encuentra", example="7501008123456")
+    lot_number: Optional[str] = Field(None, description="Número de lote del medicamento", example="LOTE001")
+    expiration_date: Optional[str] = Field(None, description="Fecha de vencimiento del medicamento", example="12/2025")
 
 
 class SearchStats(BaseModel):
@@ -93,7 +95,9 @@ class MedicationRegistrationRequest(BaseModel):
                     "presentation": "20mL",
                     "product_type": "PRODUCTO FARMACEUTICO",
                     "fractions": "1",
-                    "gtin_code": None
+                    "gtin_code": None,
+                    "lot_number": "LT240815",
+                    "expiration_date": "12/2025"
                 },
                 "gtin_code": "7750304964586",
                 "enrichment_source": "semantic_search",
@@ -167,7 +171,9 @@ class MedicationExtractionResponse(BaseModel):
                         "presentation": "20mL",
                         "product_type": None,
                         "fractions": None,
-                        "gtin_code": None
+                        "gtin_code": None,
+                        "lot_number": "LT240815",
+                        "expiration_date": "12/2025"
                     },
                     "processed_enrichment_medications": {
                         "medication_name": "Bronpax",
@@ -180,7 +186,9 @@ class MedicationExtractionResponse(BaseModel):
                         "presentation": "20mL",
                         "product_type": "PRODUCTO FARMACEUTICO",
                         "fractions": "1",
-                        "gtin_code": None
+                        "gtin_code": None,
+                        "lot_number": "LT240815",
+                        "expiration_date": "12/2025"
                     },
                     "semantic_results": [
                         {
@@ -331,7 +339,9 @@ async def extract_medication_info(
                     presentation=getattr(medication_obj, 'presentation', None),
                     product_type=getattr(medication_obj, 'product_type', None),
                     fractions=getattr(medication_obj, 'fractions', None),
-                    gtin_code=getattr(medication_obj, 'bar_code', None)  # bar_code -> gtin_code
+                    gtin_code=getattr(medication_obj, 'bar_code', None),  # bar_code -> gtin_code
+                    lot_number=getattr(medication_obj, 'lot_number', None),
+                    expiration_date=getattr(medication_obj, 'expiration_date', None)
                 )
             return medication_obj
         
