@@ -111,6 +111,133 @@ class MedicationRegistrationRequest(BaseModel):
         }
 
 
+class SkuRegistrationRequest(BaseModel):
+    """Modelo para registrar un SKU de medicamento"""
+    # Datos del medicamento (debe existir en ItemsGtin)
+    item_gtin_id: int = Field(..., description="ID del medicamento en ItemsGtin", example=11535)
+    gtin_code: str = Field(..., description="Código GTIN del medicamento", example="7750304964586")
+    
+    # Datos específicos del SKU
+    lot_number: str = Field(..., description="Número de lote del medicamento", example="LT240815")
+    expiration_date: str = Field(..., description="Fecha de expiración en formato yyyy-MM-dd", example="2025-12-01")
+    quantity: int = Field(..., description="Cantidad disponible", example=100)
+    price: float = Field(0.0, description="Precio unitario", example=15.50)
+    
+    # Metadatos del proceso
+    pharmacy_id: int = Field(..., description="ID de la farmacia", example=1)
+    uploader_id: int = Field(..., description="ID del usuario que sube el SKU", example=1)
+    received_date: Optional[str] = Field(None, description="Fecha de recepción en formato yyyy-MM-dd", example="2024-01-15")
+    
+    # Campos opcionales
+    code: Optional[str] = Field(None, description="Código interno del SKU", example="SKU001")
+    description: Optional[str] = Field(None, description="Descripción adicional", example="Lote de prueba")
+    is_active: bool = Field(True, description="Si el SKU está activo", example=True)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "item_gtin_id": 11535,
+                "gtin_code": "7750304964586",
+                "lot_number": "LT240815",
+                "expiration_date": "2025-12-01",
+                "quantity": 100,
+                "price": 15.50,
+                "pharmacy_id": 1,
+                "uploader_id": 1,
+                "received_date": "2024-01-15",
+                "code": "SKU001",
+                "description": "Lote de prueba",
+                "is_active": True
+            }
+        }
+
+
+class SkuRegistrationResponse(BaseModel):
+    """Respuesta del registro de SKU"""
+    status: str = Field(description="Estado de la operación", example="success")
+    message: str = Field(description="Mensaje descriptivo", example="SKU registrado exitosamente")
+    sku_id: Optional[int] = Field(None, description="ID del SKU en la base de datos", example=12345)
+    item_gtin_id: int = Field(description="ID del medicamento en ItemsGtin", example=11535)
+    gtin_code: str = Field(description="Código GTIN", example="7750304964586")
+    lot_number: str = Field(description="Número de lote", example="LT240815")
+    registered_at: str = Field(description="Timestamp del registro", example="2024-01-15T10:30:00Z")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "message": "SKU 'LT240815' registrado exitosamente",
+                "sku_id": 12345,
+                "item_gtin_id": 11535,
+                "gtin_code": "7750304964586",
+                "lot_number": "LT240815",
+                "registered_at": "2024-01-15T10:30:00Z"
+            }
+        }
+
+
+class CompleteMedicationRegistrationRequest(BaseModel):
+    """Modelo para registro completo: extracción + medicamento + SKU"""
+    # Datos para extracción
+    files: List[UploadFile] = Field(..., description="Imágenes de medicamentos")
+    provider: Optional[str] = Field(None, description="Proveedor OCR", enum=["mistral", "gemini"])
+    
+    # Datos para registro de medicamento (si no existe)
+    gtin_code: Optional[str] = Field(None, description="Código GTIN si se conoce", example="7750304964586")
+    user_approved: bool = Field(True, description="Si fue aprobado por el usuario")
+    
+    # Datos para registro de SKU
+    quantity: int = Field(..., description="Cantidad disponible", example=100)
+    price: float = Field(0.0, description="Precio unitario", example=15.50)
+    pharmacy_id: int = Field(..., description="ID de la farmacia", example=1)
+    uploader_id: int = Field(..., description="ID del usuario que sube", example=1)
+    received_date: Optional[str] = Field(None, description="Fecha de recepción", example="2024-01-15")
+    code: Optional[str] = Field(None, description="Código interno del SKU", example="SKU001")
+    description: Optional[str] = Field(None, description="Descripción adicional")
+    is_active: bool = Field(True, description="Si el SKU está activo")
+
+
+class CompleteMedicationRegistrationResponse(BaseModel):
+    """Respuesta del registro completo"""
+    status: str = Field(description="Estado de la operación", example="success")
+    message: str = Field(description="Mensaje descriptivo")
+    
+    # Resultados de extracción
+    extraction_results: Optional[ProcessingResult] = Field(None, description="Resultados de extracción")
+    
+    # Resultados de registro de medicamento
+    medication_registration: Optional[Dict[str, Any]] = Field(None, description="Datos de registro de medicamento")
+    
+    # Resultados de registro de SKU
+    sku_registration: Optional[Dict[str, Any]] = Field(None, description="Datos de registro de SKU")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "message": "Proceso completo exitoso: extracción + registro medicamento + registro SKU",
+                "extraction_results": {
+                    "processed_enrichment_medications": {
+                        "medication_name": "Bronpax",
+                        "common_denomination": "Ambroxol",
+                        "expiration_date": "2025-12-01",
+                        "lot_number": "LT240815"
+                    }
+                },
+                "medication_registration": {
+                    "medication_id": 11535,
+                    "gtin_code": "7750304964586",
+                    "is_ai_generated": true
+                },
+                "sku_registration": {
+                    "sku_id": 12345,
+                    "lot_number": "LT240815",
+                    "quantity": 100
+                }
+            }
+        }
+
+
 class MedicationRegistrationResponse(BaseModel):
     """Respuesta del registro de medicamento"""
     status: str = Field(description="Estado de la operación", example="success")
@@ -587,6 +714,157 @@ async def register_enriched_medication(
         )
 
 
+@router.post("/register-sku",
+             response_model=SkuRegistrationResponse,
+             responses={
+                 200: {
+                     "description": "SKU registrado exitosamente en la base de datos",
+                     "model": SkuRegistrationResponse
+                 },
+                 400: {
+                     "description": "Datos de entrada inválidos o SKU ya existe",
+                     "model": ErrorResponse
+                 },
+                 500: {
+                     "description": "Error interno del servidor",
+                     "model": ErrorResponse
+                 }
+             },
+             summary="Registrar SKU de medicamento en base de datos",
+             description="""
+## 📦 Registro de SKU de Medicamento
+
+Este endpoint registra un SKU (Stock Keeping Unit) específico de un medicamento en la tabla `ItemGtinSkus`.
+
+### 🔍 **Información del SKU:**
+- **Lote específico**: Número de lote del medicamento
+- **Fecha de expiración**: Cuándo vence el lote
+- **Cantidad disponible**: Stock actual
+- **Precio unitario**: Costo por unidad
+- **Farmacia**: Dónde se almacena el SKU
+
+### 📊 **Validaciones:**
+- ✅ Verifica que el `item_gtin_id` existe en `ItemsGtin`
+- ✅ Verifica que no exista un SKU con el mismo lote para el mismo GTIN
+- ✅ Valida formato de fechas (yyyy-MM-dd)
+- ✅ Requiere campos obligatorios: lote, expiración, cantidad, farmacia
+
+### 🎯 **Casos de Uso:**
+- **Nuevo lote**: Registrar stock recién recibido
+- **Actualización**: Agregar más unidades a un lote existente
+- **Control de inventario**: Seguimiento de fechas de vencimiento
+
+### 📋 **Estructura de Entrada:**
+```json
+{
+  "item_gtin_id": 11535,
+  "gtin_code": "7750304964586",
+  "lot_number": "LT240815",
+  "expiration_date": "2025-12-01",
+  "quantity": 100,
+  "price": 15.50,
+  "pharmacy_id": 1,
+  "uploader_id": 1
+}
+```
+             """)
+async def register_sku(
+    request: SkuRegistrationRequest
+):
+    """
+    Registra un SKU de medicamento en la tabla ItemGtinSkus.
+    
+    Args:
+        request: Datos del SKU a registrar
+        
+    Returns:
+        Confirmación de registro exitoso
+    """
+    try:
+        logger.info(f"🔄 Iniciando registro de SKU: GTIN={request.gtin_code}, Lote={request.lot_number}")
+        
+        # Inicializar servicio GTIN
+        gtin_service = GtinService()
+        
+        # Verificar que el ItemGtin existe
+        existing_medication = gtin_service.query_gtin(request.gtin_code)
+        if not existing_medication:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El medicamento con GTIN {request.gtin_code} no existe en la base de datos"
+            )
+        
+        # Verificar que el item_gtin_id coincide con el GTIN
+        if existing_medication.get('Id') != request.item_gtin_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El item_gtin_id {request.item_gtin_id} no coincide con el GTIN {request.gtin_code}"
+            )
+        
+        # Verificar que no existe un SKU con el mismo lote para este GTIN
+        existing_sku = gtin_service.get_sku_by_lot_and_gtin(request.lot_number, request.item_gtin_id)
+        if existing_sku:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ya existe un SKU con el lote '{request.lot_number}' para el GTIN {request.gtin_code}"
+            )
+        
+        # Preparar datos para inserción
+        from datetime import datetime
+        
+        sku_insert_data = {
+            'UploaderId': request.uploader_id,
+            'Code': request.code or f"SKU_{request.lot_number}",
+            'Lot': request.lot_number,
+            'PharmacyId': request.pharmacy_id,
+            'ReceivedDate': request.received_date or datetime.now().strftime('%Y-%m-%d'),
+            'ExpirationDate': request.expiration_date,
+            'IsActive': request.is_active,
+            'Quantity': request.quantity,
+            'Price': request.price,
+            'IsDeleted': False,
+            'Name': existing_medication.get('Name', ''),
+            'Description': request.description or f"SKU de {existing_medication.get('Name', '')}",
+            'ItemGtinId': request.item_gtin_id,
+            'InitialQuantity': request.quantity,
+            'IsUpdated': False,
+            'UpdateDate': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        # Ejecutar inserción
+        result = gtin_service.insert_sku(sku_insert_data)
+        
+        if not result.get('success'):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al insertar SKU: {result.get('message')}"
+            )
+        
+        logger.info(f"✅ SKU registrado exitosamente: Lote={request.lot_number}, GTIN={request.gtin_code}")
+        
+        return SkuRegistrationResponse(
+            status="success",
+            message=f"SKU '{request.lot_number}' registrado exitosamente",
+            sku_id=result.get('sku_id'),
+            item_gtin_id=request.item_gtin_id,
+            gtin_code=request.gtin_code,
+            lot_number=request.lot_number,
+            registered_at=datetime.utcnow().isoformat() + "Z"
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error registrando SKU: {str(e)}")
+        import traceback
+        logger.error(f"🔍 Stack trace: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error interno al registrar SKU: {str(e)}"
+        )
+
+
 # ================================
 # EJEMPLOS DE USO PARA TESTING
 # ================================
@@ -652,6 +930,38 @@ curl -X POST "http://localhost:9088/api/medication/register-enriched" \
     "enrichment_source": "database_gtin",
     "enrichment_confidence": 0.95,
     "user_approved": true
+  }'
+
+### 4. Registrar SKU de medicamento:
+curl -X POST "http://localhost:9088/api/medication/register-sku" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "item_gtin_id": 11535,
+    "gtin_code": "7750304964586",
+    "lot_number": "LT240815",
+    "expiration_date": "2025-12-01",
+    "quantity": 100,
+    "price": 15.50,
+    "pharmacy_id": 1,
+    "uploader_id": 1,
+    "received_date": "2024-01-15",
+    "code": "SKU001",
+    "description": "Lote de prueba",
+    "is_active": true
+  }'
+
+### 5. SKU con datos mínimos:
+curl -X POST "http://localhost:9088/api/medication/register-sku" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "item_gtin_id": 11535,
+    "gtin_code": "7750304964586",
+    "lot_number": "LOTE2024",
+    "expiration_date": "2026-05-01",
+    "quantity": 50,
+    "price": 12.00,
+    "pharmacy_id": 1,
+    "uploader_id": 1
   }'
 """
 

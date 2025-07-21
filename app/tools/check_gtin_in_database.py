@@ -397,6 +397,102 @@ class GtinService:
             logger.error(f"Error inserting medication: {str(e)}")
             raise
 
+    def insert_sku(self, sku_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Inserta un nuevo SKU en la tabla ItemGtinSkus.
+        
+        Args:
+            sku_data: Diccionario con los datos del SKU
+            
+        Returns:
+            Dict con el resultado de la inserción
+        """
+        try:
+            logger.info(f"🔄 Insertando SKU para ItemGtinId: {sku_data.get('ItemGtinId')}")
+            
+            # Query para insertar SKU
+            insert_query = """
+            INSERT INTO [registroclinico].[ItemGtinSkus] (
+                UploaderId, Code, Lot, PharmacyId, ReceivedDate, ExpirationDate,
+                IsActive, Quantity, Price, IsDeleted, Name, Description, 
+                ItemGtinId, InitialQuantity, IsUpdated, UpdateDate
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            """
+            
+            # Preparar parámetros
+            params = [
+                sku_data.get('UploaderId'),
+                sku_data.get('Code'),
+                sku_data.get('Lot'),
+                sku_data.get('PharmacyId'),
+                sku_data.get('ReceivedDate'),
+                sku_data.get('ExpirationDate'),
+                sku_data.get('IsActive', True),
+                sku_data.get('Quantity', 0),
+                sku_data.get('Price', 0.0),
+                sku_data.get('IsDeleted', False),
+                sku_data.get('Name'),
+                sku_data.get('Description'),
+                sku_data.get('ItemGtinId'),
+                sku_data.get('InitialQuantity', sku_data.get('Quantity', 0)),
+                sku_data.get('IsUpdated', False),
+                sku_data.get('UpdateDate')
+            ]
+            
+            # Ejecutar inserción
+            result = self.db.execute_query(insert_query, params)
+            
+            if result and result.get('success'):
+                logger.info(f"✅ SKU insertado exitosamente")
+                return {
+                    'success': True,
+                    'message': 'SKU registrado exitosamente',
+                    'sku_id': result.get('last_id')
+                }
+            else:
+                logger.error(f"❌ Error al insertar SKU: {result}")
+                return {
+                    'success': False,
+                    'message': 'Error al insertar SKU en la base de datos'
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Error insertando SKU: {str(e)}")
+            return {
+                'success': False,
+                'message': f'Error interno: {str(e)}'
+            }
+
+    def get_sku_by_lot_and_gtin(self, lot: str, item_gtin_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Busca un SKU por lote y ItemGtinId.
+        
+        Args:
+            lot: Número de lote
+            item_gtin_id: ID del ItemGtin
+            
+        Returns:
+            Dict con los datos del SKU si existe, None si no
+        """
+        try:
+            query = """
+            SELECT * FROM [registroclinico].[ItemGtinSkus] 
+            WHERE Lot = %s AND ItemGtinId = %s AND IsDeleted = 0
+            """
+            
+            result = self.db.execute_query(query, (lot, item_gtin_id))
+            
+            if result and result.get('data') and len(result['data']) > 0:
+                return result['data'][0]
+            else:
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error consultando SKU por lote: {str(e)}")
+            return None
+
 
 async def check_gtin_in_database_v3(state: Dict[str, Any]) -> Dict[str, Any]:
     """
